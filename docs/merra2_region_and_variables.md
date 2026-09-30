@@ -29,9 +29,11 @@ divisibility check.
 ## Variables
 
 Confirmed exact list and order from
-`NASA-IMPACT/Prithvi-WxC/examples/PrithviWxC_inference.ipynb` (develop
-branch) -- **do not** add/remove/reorder these; the pretrained weights'
-normalization scalers and channel ordering depend on it exactly.
+`NASA-IMPACT/Prithvi-WxC/examples/PrithviWxC_inference.ipynb` (`main`
+branch, the repo's default -- re-checked against both `main` and `develop`
+after they turned out to have diverged; this specific variable/level list is
+identical on both) -- **do not** add/remove/reorder these; the pretrained
+weights' normalization scalers and channel ordering depend on it exactly.
 
 - **Surface (20)**: EFLUX, GWETROOT, HFLUX, LAI, LWGAB, LWGEM, LWTUP, PS,
   QV2M, SLP, SWGNT, SWTNT, T2M, TQI, TQL, TQV, TS, U10M, V10M, Z0M

@@ -115,6 +115,7 @@ def main() -> None:
         patch_size_px=p["patch_size_px"],
         mask_unit_size_px=p["mask_unit_size_px"],
         mask_ratio_inputs=args.mask_ratio,
+        mask_ratio_targets=0.0,  # required on the repo's main branch; >0 raises NotImplementedError (target masking unsupported)
         embed_dim=p["embed_dim"],
         n_blocks_encoder=p["n_blocks_encoder"],
         n_blocks_decoder=p["n_blocks_decoder"],
@@ -124,9 +125,10 @@ def main() -> None:
         drop_path=p["drop_path"],
         parameter_dropout=p["parameter_dropout"],
         residual="climate",
-        masking_mode="local",
+        masking_mode="global",  # matches the repo's own current demo config; inconsequential when mask_ratio=0 either way
         positional_encoding="fourier",
-        decoder_shifting=False,
+        encoder_shifting=True,  # matches the repo's own current demo config for this exact checkpoint
+        decoder_shifting=True,
         checkpoint_encoder=[],
         checkpoint_decoder=[],
     )

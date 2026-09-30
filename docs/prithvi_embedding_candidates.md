@@ -1,10 +1,20 @@
 # Candidate Prithvi WxC embedding tensors
 
-**Status: confirmed from source** (NASA-IMPACT/Prithvi-WxC `develop` branch,
+**Status: confirmed from source** (NASA-IMPACT/Prithvi-WxC `main` branch --
+the repo's default, and what `git clone` with no `-b` flag actually checks
+out; corrected 2026-09-30 after initial research against `develop`
+surfaced a real signature mismatch on the cluster -- `develop` and `main`
+have diverged: `main` additionally requires `mask_ratio_targets` at
+construction, raising `NotImplementedError` if `>0.0`, and its current own
+demo notebook defaults to `masking_mode="global"`, `encoder_shifting=True`,
+`decoder_shifting=True`, `masking_ratio=0.0`, which `src/prithvi/
+extract_embeddings.py` and `src/prithvi/sample_validation.py` now match).
 `PrithviWxC/model.py` + `PrithviWxC/dataloaders/merra2.py`, and the model's
-`config.yaml`, all fetched 2026-09-29). No cluster access was needed for
-this -- it's a public repo -- see `src/prithvi/extract_embeddings.py` for
-the implementation.
+`config.yaml`, fetched 2026-09-29/30. No cluster access was needed for this
+-- it's a public repo -- see `src/prithvi/extract_embeddings.py` for the
+implementation. `merra2.py`'s file-reading logic (the load-bearing parts
+`build_daily_prithvi_files.py`/`crop_climatology.py` depend on) is
+unchanged between the two branches -- re-diffed to confirm.
 
 ## Architecture summary
 
