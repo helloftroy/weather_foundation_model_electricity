@@ -127,8 +127,15 @@ inference notebook, not guessed. Re-run `src/merra2/define_region.py` only
 if the region needs to change.
 
 ```bash
-sbatch --account=191001-364393cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
-sbatch --account=191001-364393 cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
+sbatch --account=191001-364393 cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
+
+sbatch --account=191001-364393 \
+  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
+  cluster/sbatch/service/02_download_merra2_sample.sbatch
+
+sbatch --account=191001-364393 \
+  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
+  cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
 ```
 
 ### 4. ISO-NE electricity demand, 2024 (service)

@@ -33,12 +33,45 @@ or EARTHDATA_USERNAME / EARTHDATA_PASSWORD env vars, and network access
 (run on the service node).
 """
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
 
 import earthaccess
 import xarray as xr
 import yaml
+
+
+def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5):
+    """Fetch one granule, crop to the region, and write it out, retrying on
+    transient network/service errors (S3/CloudFront occasionally returns 503
+    under sustained sequential access across a full-year download -- not a
+    bug, just needs a retry)."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            fileset = earthaccess.open([granule])
+            # earthaccess.open() returns fsspec file-like objects with no
+            # filename/extension to sniff, so xarray's engine auto-guessing
+            # fails even though the underlying format is fine -- MERRA-2 is
+            # HDF5-based netCDF4, and h5netcdf is already installed (a
+            # Prithvi-WxC dependency), so just say so explicitly.
+            ds = xr.open_dataset(fileset[0], engine="h5netcdf")
+            missing = [v for v in variables if v not in ds.variables]
+            if missing:
+                raise SystemExit(f"variables not found in granule: {missing}")
+
+            cropped = ds[variables].sel(lat=slice(lat_min, lat_max), lon=slice(lon_min, lon_max))
+            cropped.load().to_netcdf(out_path)
+            ds.close()
+            return cropped.nbytes
+        except SystemExit:
+            raise
+        except Exception as e:
+            if attempt == max_retries:
+                raise
+            wait = min(30 * attempt, 300)
+            print(f"  attempt {attempt}/{max_retries} failed ({e}); retrying in {wait}s...", flush=True)
+            time.sleep(wait)
 
 
 def main() -> None:
@@ -96,32 +129,24 @@ def main() -> None:
         print(f"Found {len(results)} granules for {collection}")
 
         for granule in results:
-            # One granule = one file, so this is always a single-item list
-            # -- open_dataset (not open_mfdataset) is the right tool; the
-            # "mf" (multi-file, dask-backed) variant isn't needed here and
-            # requires dask, which isn't otherwise a dependency of anything
-            # in this project.
-            fileset = earthaccess.open([granule])
-            # earthaccess.open() returns fsspec file-like objects with no
-            # filename/extension to sniff, so xarray's engine auto-guessing
-            # fails even though the underlying format is fine -- MERRA-2 is
-            # HDF5-based netCDF4, and h5netcdf is already installed (a
-            # Prithvi-WxC dependency), so just say so explicitly.
-            ds = xr.open_dataset(fileset[0], engine="h5netcdf")
-            missing = [v for v in variables if v not in ds.variables]
-            if missing:
-                raise SystemExit(f"{collection}: variables not found in granule: {missing}")
-
-            cropped = ds[variables].sel(
-                lat=slice(args.lat_min, args.lat_max),
-                lon=slice(args.lon_min, args.lon_max),
-            )
             granule_id = granule.get("meta", {}).get("native-id") or granule["umm"]["GranuleUR"]
             out_path = coll_dir / f"{granule_id}.nc"
-            cropped.load().to_netcdf(out_path)
-            ds.close()
+
+            # Resumable: a long full-year download can get interrupted by a
+            # transient error even with retries (or a job timeout, a manual
+            # Ctrl-C, etc.) -- skip granules already written by a previous
+            # run instead of redoing completed work.
+            if out_path.exists() and out_path.stat().st_size > 0:
+                manifest_rows.append({"collection": collection, "path": str(out_path)})
+                continue
+
+            nbytes = fetch_crop_write(
+                granule, variables,
+                args.lat_min, args.lat_max, args.lon_min, args.lon_max,
+                out_path,
+            )
             manifest_rows.append({"collection": collection, "path": str(out_path)})
-            print(f"  wrote {out_path} ({cropped.nbytes / 1e6:.1f} MB)")
+            print(f"  wrote {out_path} ({nbytes / 1e6:.1f} MB)")
 
     manifest_path = args.out_dir / "download_manifest.csv"
     import csv
