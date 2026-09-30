@@ -15,43 +15,32 @@ echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 
-export SCRATCH_ROOT="${SCRATCH_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
+if [ ! -d "${REPO_ROOT}/src" ]; then
+  echo "REPO_ROOT=${REPO_ROOT} doesn't look like the repo (no src/ dir). Run sbatch from the repo root." >&2
+  exit 1
+fi
+export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 export HF_HOME="${HF_HOME:-${SCRATCH_ROOT}/hf_cache}"
-
-# jupyter/ipython write config/kernel state to $HOME by default
-# (~/.ipython, ~/.jupyter) regardless of HF_HOME -- redirect those into
-# scratch too, or this fails with "Disk quota exceeded" on a full $HOME.
-export IPYTHONDIR="${IPYTHONDIR:-${SCRATCH_ROOT}/jupyter_cache/ipython}"
-export JUPYTER_CONFIG_DIR="${JUPYTER_CONFIG_DIR:-${SCRATCH_ROOT}/jupyter_cache/config}"
-export JUPYTER_DATA_DIR="${JUPYTER_DATA_DIR:-${SCRATCH_ROOT}/jupyter_cache/data}"
-export JUPYTER_RUNTIME_DIR="${JUPYTER_RUNTIME_DIR:-${SCRATCH_ROOT}/jupyter_cache/runtime}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${SCRATCH_ROOT}/xdg_cache}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRATCH_ROOT}/mpl_cache}"
-mkdir -p logs "${IPYTHONDIR}" "${JUPYTER_CONFIG_DIR}" "${JUPYTER_DATA_DIR}" "${JUPYTER_RUNTIME_DIR}" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
+mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 PRITHVI_ENV="$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 conda activate "${PRITHVI_ENV}"
 echo "Activated env: ${PRITHVI_ENV}"
 
-PRITHVI_REPO_DIR="${PRITHVI_REPO_DIR:-${SCRATCH_ROOT}/Prithvi-WxC}"
-# The notebook's own cells use paths relative to ITS directory (examples/),
-# e.g. "../data/merra-2" -- nbconvert does not auto-chdir into the notebook's
-# directory, it inherits the caller's cwd. cd into examples/ first so those
-# relative paths resolve the way the notebook authors intended (one level
-# above examples/, i.e. the repo root), instead of one level above wherever
-# we happened to launch from.
-cd "${PRITHVI_REPO_DIR}/examples"
+# Runs the OFFICIAL Merra2Dataset/PrithviWxC/preproc pipeline (same code the
+# notebook uses), but points at the sample MERRA-2/climatology data already
+# downloaded in full by 01_setup_prithvi.sbatch, instead of re-running the
+# notebook's own hf_hub_download cells -- those point at
+# ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M, whose merra-2/climatology dirs
+# are empty upstream (confirmed 2026-09-30). See
+# src/prithvi/sample_validation.py's docstring for the full story.
+WEIGHTS_DIR="${WEIGHTS_DIR:-${SCRATCH_ROOT}/weights/prithvi.wxc.2300m.v1}"
 
-# Run the repository's own basic-inference notebook as the official small/
-# sample validation test (downloads its own sample data + weights on first
-# run if not already cached under HF_HOME). This is the "official
-# basic-inference and validation workflow" from Phase 1 step 2 -- do not
-# replace with custom inference code at this stage.
-jupyter nbconvert --to notebook --execute \
-  --ExecutePreprocessor.timeout=3600 \
-  --output "prithvi_sample_inference_executed_${SLURM_JOB_ID}.ipynb" \
-  PrithviWxC_inference.ipynb
+python "${REPO_ROOT}/src/prithvi/sample_validation.py" \
+  --weights-dir "${WEIGHTS_DIR}"
 
-echo "Executed notebook saved in ${PRITHVI_REPO_DIR}/examples/"
 echo "Job finished: $(date)"

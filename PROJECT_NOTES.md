@@ -105,11 +105,18 @@ climatology into scratch via `huggingface_hub`.
 ```bash
 sbatch --account=191001-364393 cluster/sbatch/gpu/01_prithvi_sample_inference.sbatch
 ```
-Executes the repo's own `examples/PrithviWxC_inference.ipynb` as the official
-small/sample validation test. The embedding-extraction architecture research
-(where to hook, why regional cropping is valid, exact tensor shapes) is
-already done and written up in `docs/prithvi_embedding_candidates.md` --
-this step is just a smoke test that the install works before moving on.
+Runs `src/prithvi/sample_validation.py` -- the same official
+`Merra2Dataset`/`PrithviWxC`/`preproc` code the notebook uses, but pointed at
+the sample MERRA-2/climatology data already downloaded in step 1, instead of
+running `examples/PrithviWxC_inference.ipynb` directly. That notebook's own
+download cells point at `ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M`, whose
+`merra-2/`/`climatology/` directories are empty upstream (confirmed via
+direct HTTP checks, 2026-09-30) -- likely deprecated in favor of
+`Prithvi-WxC/prithvi.wxc.2300m.v1`, which we already fully download in step
+1. This also directly exercises the encoder-hook embedding extraction from
+`docs/prithvi_embedding_candidates.md` against real weights, printing the
+observed `global_shape_mu`/embed_dim for a sanity check before the full
+Phase 2 run.
 
 ### 3. MERRA-2: sample, then full year (service)
 

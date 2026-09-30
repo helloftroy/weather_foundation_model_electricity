@@ -78,7 +78,7 @@ def region_centers(lat_min: float, lon_min: float, mask_unit_size_px, n_global_l
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--weights-dir", type=Path, required=True, help="Downloaded prithvi.wxc.2300m.v1 snapshot (has config.yaml, weights/, climatology/)")
+    parser.add_argument("--weights-dir", type=Path, required=True, help="Downloaded prithvi.wxc.2300m.v1 snapshot (has config.yaml, *.pt, climatology/)")
     parser.add_argument("--merra2-surface-dir", type=Path, required=True)
     parser.add_argument("--merra2-vertical-dir", type=Path, required=True)
     parser.add_argument("--climatology-surface-dir", type=Path, required=True, help="Regionally-cropped climatology (from crop_climatology.py)")
@@ -172,7 +172,13 @@ def main() -> None:
         checkpoint_decoder=[],
     )
 
-    weights_path = args.weights_dir / "weights" / "prithvi.wxc.2300m.v1.pt"
+    # download_prithvi_weights.py mirrors the HF repo's own layout directly
+    # under --weights-dir (the .pt is at the repo root, no "weights/"
+    # subfolder -- that naming is the official notebook's own local
+    # convention, not ours). Confirmed via sample_validation.py.
+    weights_path = args.weights_dir / "prithvi.wxc.2300m.v1.pt"
+    if not weights_path.exists():
+        weights_path = args.weights_dir / "weights" / "prithvi.wxc.2300m.v1.pt"
     state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
     if "model_state" in state_dict:
         state_dict = state_dict["model_state"]
