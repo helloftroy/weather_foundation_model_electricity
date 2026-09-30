@@ -41,6 +41,16 @@ PRITHVI_ENV="$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 conda activate "${PRITHVI_ENV}"
 echo "Activated env for weight download: ${PRITHVI_ENV}"
 
+# The climatology directory in this repo is thousands of small files, enough
+# to trip HF's unauthenticated rate limit (429). Set HF_TOKEN (export it
+# before `sbatch`-ing this, from a free huggingface.co account's access
+# token) to raise the limit -- the download script also retries with backoff
+# and resumes (already-fetched files aren't re-downloaded) either way.
+if [ -z "${HF_TOKEN:-}" ]; then
+  echo "NOTE: HF_TOKEN not set -- unauthenticated HF downloads are rate-limited" >&2
+  echo "      and may hit 429s on this repo's many climatology files." >&2
+fi
+
 python "${REPO_ROOT}/src/prithvi/download_prithvi_weights.py" \
   --out-dir "${SCRATCH_ROOT}/weights/prithvi.wxc.2300m.v1"
 
