@@ -57,10 +57,22 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     config = yaml.safe_load(args.variables_config.read_text())
 
-    auth = earthaccess.login(strategy="netrc")
-    if not auth.authenticated:
-        auth = earthaccess.login(strategy="environment")
-    if not auth.authenticated:
+    # earthaccess.login(strategy="netrc") RAISES LoginStrategyUnavailable
+    # (rather than returning an unauthenticated result) when ~/.netrc exists
+    # but lacks a urs.earthdata.nasa.gov entry -- catch it and fall through
+    # to the environment strategy instead of letting it crash the script.
+    auth = None
+    try:
+        auth = earthaccess.login(strategy="netrc")
+    except Exception as e:
+        print(f"netrc login strategy unavailable ({e}); trying environment variables instead.")
+    if auth is None or not auth.authenticated:
+        try:
+            auth = earthaccess.login(strategy="environment")
+        except Exception as e:
+            print(f"environment login strategy failed: {e}")
+            auth = None
+    if auth is None or not auth.authenticated:
         raise SystemExit(
             "Earthdata login failed. Set up ~/.netrc for urs.earthdata.nasa.gov "
             "or EARTHDATA_USERNAME/EARTHDATA_PASSWORD."
