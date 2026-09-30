@@ -43,10 +43,10 @@ def main() -> None:
     parser.add_argument(
         "--max-workers",
         type=int,
-        default=4,
-        help="Concurrent download threads (default 4; lower this further if still rate-limited).",
+        default=2,
+        help="Concurrent download threads (default 2 -- kept low since bursts of parallel requests seem to trip the rate limit even with HF_TOKEN set).",
     )
-    parser.add_argument("--max-retries", type=int, default=6)
+    parser.add_argument("--max-retries", type=int, default=20)
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -61,8 +61,12 @@ def main() -> None:
             )
             break
         except (HfHubHTTPError, ConnectionError) as e:
-            wait = min(60 * attempt, 300)
-            print(f"Attempt {attempt}/{args.max_retries} failed ({e}); retrying in {wait}s...")
+            wait = min(30 * attempt, 600)
+            print(
+                f"Attempt {attempt}/{args.max_retries} failed ({e}); "
+                f"retrying in {wait}s...",
+                flush=True,
+            )
             time.sleep(wait)
     if snapshot_dir is None:
         raise SystemExit(
