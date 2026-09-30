@@ -3,7 +3,7 @@
 #SBATCH --partition=service
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/merra2_2024_%j.out
 #SBATCH --error=logs/merra2_2024_%j.err
 
