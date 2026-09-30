@@ -17,7 +17,17 @@ echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 
 export SCRATCH_ROOT="${SCRATCH_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 export HF_HOME="${HF_HOME:-${SCRATCH_ROOT}/hf_cache}"
-mkdir -p logs
+
+# jupyter/ipython write config/kernel state to $HOME by default
+# (~/.ipython, ~/.jupyter) regardless of HF_HOME -- redirect those into
+# scratch too, or this fails with "Disk quota exceeded" on a full $HOME.
+export IPYTHONDIR="${IPYTHONDIR:-${SCRATCH_ROOT}/jupyter_cache/ipython}"
+export JUPYTER_CONFIG_DIR="${JUPYTER_CONFIG_DIR:-${SCRATCH_ROOT}/jupyter_cache/config}"
+export JUPYTER_DATA_DIR="${JUPYTER_DATA_DIR:-${SCRATCH_ROOT}/jupyter_cache/data}"
+export JUPYTER_RUNTIME_DIR="${JUPYTER_RUNTIME_DIR:-${SCRATCH_ROOT}/jupyter_cache/runtime}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${SCRATCH_ROOT}/xdg_cache}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRATCH_ROOT}/mpl_cache}"
+mkdir -p logs "${IPYTHONDIR}" "${JUPYTER_CONFIG_DIR}" "${JUPYTER_DATA_DIR}" "${JUPYTER_RUNTIME_DIR}" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 PRITHVI_ENV="$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
