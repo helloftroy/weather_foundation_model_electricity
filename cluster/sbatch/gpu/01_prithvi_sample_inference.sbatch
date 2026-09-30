@@ -35,7 +35,13 @@ conda activate "${PRITHVI_ENV}"
 echo "Activated env: ${PRITHVI_ENV}"
 
 PRITHVI_REPO_DIR="${PRITHVI_REPO_DIR:-${SCRATCH_ROOT}/Prithvi-WxC}"
-cd "${PRITHVI_REPO_DIR}"
+# The notebook's own cells use paths relative to ITS directory (examples/),
+# e.g. "../data/merra-2" -- nbconvert does not auto-chdir into the notebook's
+# directory, it inherits the caller's cwd. cd into examples/ first so those
+# relative paths resolve the way the notebook authors intended (one level
+# above examples/, i.e. the repo root), instead of one level above wherever
+# we happened to launch from.
+cd "${PRITHVI_REPO_DIR}/examples"
 
 # Run the repository's own basic-inference notebook as the official small/
 # sample validation test (downloads its own sample data + weights on first
@@ -45,7 +51,7 @@ cd "${PRITHVI_REPO_DIR}"
 jupyter nbconvert --to notebook --execute \
   --ExecutePreprocessor.timeout=3600 \
   --output "prithvi_sample_inference_executed_${SLURM_JOB_ID}.ipynb" \
-  examples/PrithviWxC_inference.ipynb
+  PrithviWxC_inference.ipynb
 
 echo "Executed notebook saved in ${PRITHVI_REPO_DIR}/examples/"
 echo "Job finished: $(date)"

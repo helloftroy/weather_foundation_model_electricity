@@ -93,8 +93,8 @@ mkdir -p /scratch/morrill/users/hmp278/weather_foundation_model_electricity
 
 ### 1. Set up Prithvi WxC (service)
 
-```bash
-sbatch cluster/sbatch/service/01_setup_prithvi.sbatch
+```bash (DONE ~~)
+sbatch --account=191001-364393 cluster/sbatch/service/01_setup_prithvi.sbatch
 ```
 Clones NASA-IMPACT/Prithvi-WxC, resolves FAIRe-vs-new-env, `pip install
 -e .[examples]`, downloads `Prithvi-WxC/prithvi.wxc.2300m.v1` weights +
@@ -103,7 +103,7 @@ climatology into scratch via `huggingface_hub`.
 ### 2. Sample inference validation (gpu-a100)
 
 ```bash
-sbatch cluster/sbatch/gpu/01_prithvi_sample_inference.sbatch
+sbatch --account=191001-364393 cluster/sbatch/gpu/01_prithvi_sample_inference.sbatch
 ```
 Executes the repo's own `examples/PrithviWxC_inference.ipynb` as the official
 small/sample validation test. The embedding-extraction architecture research
@@ -120,8 +120,8 @@ inference notebook, not guessed. Re-run `src/merra2/define_region.py` only
 if the region needs to change.
 
 ```bash
-sbatch cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
-sbatch cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
+sbatch --account=191001-364393cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
+sbatch --account=191001-364393 cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
 ```
 
 ### 4. ISO-NE electricity demand, 2024 (service)
