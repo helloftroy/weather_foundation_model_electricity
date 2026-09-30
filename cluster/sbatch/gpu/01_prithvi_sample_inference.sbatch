@@ -19,7 +19,7 @@ export SCRATCH_ROOT="${SCRATCH_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 export HF_HOME="${HF_HOME:-${SCRATCH_ROOT}/hf_cache}"
 mkdir -p logs
 
-source "$(conda info --base)/etc/profile.d/conda.sh"
+source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 PRITHVI_ENV="$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 conda activate "${PRITHVI_ENV}"
 echo "Activated env: ${PRITHVI_ENV}"

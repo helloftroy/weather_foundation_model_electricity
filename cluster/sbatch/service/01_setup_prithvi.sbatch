@@ -36,7 +36,7 @@ echo "HF_HOME=${HF_HOME}"
 
 bash "${REPO_ROOT}/src/prithvi/setup_prithvi_env.sh"
 
-source "$(conda info --base)/etc/profile.d/conda.sh"
+source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 PRITHVI_ENV="$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 conda activate "${PRITHVI_ENV}"
 echo "Activated env for weight download: ${PRITHVI_ENV}"

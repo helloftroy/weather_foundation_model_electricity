@@ -22,7 +22,7 @@ fi
 export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 mkdir -p logs "${SCRATCH_ROOT}/data/merra2_2024"
 
-source "$(conda info --base)/etc/profile.d/conda.sh"
+source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 START="${START:-2024-01-01}"

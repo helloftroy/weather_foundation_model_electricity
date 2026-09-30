@@ -34,10 +34,16 @@ Cloned onto the cluster; large data/weights/caches live under
   preprocessing, later CatBoost). *(Confirm this is the correct `--partition`
   value with `sinfo` once on the cluster -- see the note in
   `cluster/sbatch/cpu_morrill/01_qc_merra2_isone.sbatch`.)*
-- Environment: reuse the existing **FAIRe** conda env if it already has a
-  compatible Python (>=3.10) and torch install; otherwise create a dedicated
-  `prithvi_wxc` env under scratch. `HF_HOME`, pip cache, and tmp are all
-  redirected into scratch. See `src/prithvi/setup_prithvi_env.sh`.
+- Environment: reusing the existing **faire-agent** conda env
+  (`/scratch/morrill/users/hmp278/conda_envs/faire-agent`, from
+  `FAIRe_Ocean_Agent`) -- confirmed python 3.11.15, torch 2.13.0+cu130, which
+  is compatible, so Prithvi-WxC installs into it rather than a new env
+  (`cuda.is_available()` reads False on the login node since there's no GPU
+  there; that's expected, not a disqualifier). Conda itself isn't on `PATH`
+  on login/compute nodes -- sourced from
+  `/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh`, same as
+  `FAIRe_Ocean_Agent/cluster/env_activate.sh` does. `HF_HOME`, pip cache, and
+  tmp are all redirected into scratch. See `src/prithvi/setup_prithvi_env.sh`.
 
 ## Directory layout on the cluster
 
