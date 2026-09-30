@@ -96,13 +96,18 @@ def main() -> None:
         print(f"Found {len(results)} granules for {collection}")
 
         for granule in results:
+            # One granule = one file, so this is always a single-item list
+            # -- open_dataset (not open_mfdataset) is the right tool; the
+            # "mf" (multi-file, dask-backed) variant isn't needed here and
+            # requires dask, which isn't otherwise a dependency of anything
+            # in this project.
             fileset = earthaccess.open([granule])
             # earthaccess.open() returns fsspec file-like objects with no
             # filename/extension to sniff, so xarray's engine auto-guessing
             # fails even though the underlying format is fine -- MERRA-2 is
             # HDF5-based netCDF4, and h5netcdf is already installed (a
             # Prithvi-WxC dependency), so just say so explicitly.
-            ds = xr.open_mfdataset(fileset, combine="by_coords", engine="h5netcdf")
+            ds = xr.open_dataset(fileset[0], engine="h5netcdf")
             missing = [v for v in variables if v not in ds.variables]
             if missing:
                 raise SystemExit(f"{collection}: variables not found in granule: {missing}")
