@@ -22,7 +22,7 @@ embedding.
 
 GitHub: https://github.com/helloftroy/weather_foundation_model_electricity
 Cloned onto the cluster; large data/weights/caches live under
-`/scratch/morrill/users/hmp278/weather_electricity_foundation/`, never `$HOME`.
+`/scratch/morrill/users/hmp278/weather_foundation_model_electricity/`, never `$HOME`.
 
 ## Cluster logistics
 
@@ -42,7 +42,7 @@ Cloned onto the cluster; large data/weights/caches live under
 ## Directory layout on the cluster
 
 ```
-/scratch/morrill/users/hmp278/weather_electricity_foundation/
+/scratch/morrill/users/hmp278/weather_foundation_model_electricity/
 ├── Prithvi-WxC/          # cloned NASA-IMPACT repo
 ├── envs/prithvi_wxc/     # dedicated conda env, only if FAIRe wasn't reusable
 ├── weights/              # HF snapshot of prithvi.wxc.2300m.v1
@@ -78,7 +78,7 @@ conda activate FAIRe && python -c "import torch; print(torch.__version__)"
 
 # Check scratch space
 df -h /scratch/morrill/users/hmp278/
-mkdir -p /scratch/morrill/users/hmp278/weather_electricity_foundation
+mkdir -p /scratch/morrill/users/hmp278/weather_foundation_model_electricity
 ```
 
 ### 1. Set up Prithvi WxC (service)

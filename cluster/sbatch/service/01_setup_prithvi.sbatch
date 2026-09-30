@@ -13,18 +13,26 @@ echo "Job started: $(date)"
 echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 
-# TODO: confirm this matches wherever the project actually lives on the
-# cluster once created (see PROJECT_NOTES.md step 0).
-export SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/morrill/users/hmp278/weather_electricity_foundation}"
+# $0 is unreliable under sbatch (SLURM runs a spooled copy of the script, not
+# the original path), so locate the repo via SLURM_SUBMIT_DIR -- the
+# directory `sbatch` was invoked from -- instead.
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
+if [ ! -d "${REPO_ROOT}/src" ]; then
+  echo "REPO_ROOT=${REPO_ROOT} doesn't look like the repo (no src/ dir). Run sbatch from the repo root." >&2
+  exit 1
+fi
+
+# Data/weights/caches are gitignored subdirs co-located with the repo by
+# default, so there's nothing to keep in sync with a separately-guessed path.
+export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 export HF_HOME="${HF_HOME:-${SCRATCH_ROOT}/hf_cache}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${SCRATCH_ROOT}/pip_cache}"
 export TMPDIR="${TMPDIR:-${SCRATCH_ROOT}/tmp}"
 mkdir -p "${SCRATCH_ROOT}" "${HF_HOME}" "${PIP_CACHE_DIR}" "${TMPDIR}" logs
 
+echo "REPO_ROOT=${REPO_ROOT}"
 echo "SCRATCH_ROOT=${SCRATCH_ROOT}"
 echo "HF_HOME=${HF_HOME}"
-
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 bash "${REPO_ROOT}/src/prithvi/setup_prithvi_env.sh"
 

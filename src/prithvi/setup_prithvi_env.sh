@@ -5,7 +5,7 @@
 # Run on the service node (needs internet for pip installs).
 set -euo pipefail
 
-SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/morrill/users/hmp278/weather_electricity_foundation}"
+SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/morrill/users/hmp278/weather_foundation_model_electricity}"
 ENV_ROOT="${SCRATCH_ROOT}/envs"
 PRITHVI_ENV_NAME="${PRITHVI_ENV_NAME:-prithvi_wxc}"
 FAIRE_ENV_NAME="${FAIRE_ENV_NAME:-FAIRe}"

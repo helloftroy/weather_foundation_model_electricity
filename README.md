@@ -29,7 +29,7 @@ docs/                       Reference notes filled in as we go (embedding candid
 ## Cluster
 
 Runs on the `hpc2` (Mississippi State HPC2 / Orion) cluster. Large data, weights,
-caches, and environments live under `/scratch/morrill/users/hmp278/weather_electricity_foundation/`,
+caches, and environments live under `/scratch/morrill/users/hmp278/weather_foundation_model_electricity/`,
 never under `$HOME`. See [PROJECT_NOTES.md](PROJECT_NOTES.md) for the exact
 directory layout and setup commands.
 

@@ -15,7 +15,7 @@ echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 
-export SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/morrill/users/hmp278/weather_electricity_foundation}"
+export SCRATCH_ROOT="${SCRATCH_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 export HF_HOME="${HF_HOME:-${SCRATCH_ROOT}/hf_cache}"
 mkdir -p logs
 

@@ -15,10 +15,14 @@ echo "Host: $(hostname)"
 # account, see src/isone/download_isone_demand.py docstring). Export them in
 # the shell before `sbatch`-ing this, or source a gitignored credentials.sh.
 
-export SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/morrill/users/hmp278/weather_electricity_foundation}"
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
+if [ ! -d "${REPO_ROOT}/src" ]; then
+  echo "REPO_ROOT=${REPO_ROOT} doesn't look like the repo (no src/ dir). Run sbatch from the repo root." >&2
+  exit 1
+fi
+export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 mkdir -p logs "${SCRATCH_ROOT}/data/isone_2024"
 
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
