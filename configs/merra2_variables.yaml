@@ -1,0 +1,78 @@
+# Confirmed variable list, sourced directly from NASA-IMPACT/Prithvi-WxC's
+# own official examples/PrithviWxC_inference.ipynb (develop branch, fetched
+# 2026-09-29) -- these are the EXACT variables/order the pretrained
+# prithvi.wxc.2300m.v1 checkpoint was trained on. Do not add/remove/reorder.
+#
+# 20 surface + 10 vertical x 14 levels = 160 channels, matching the model
+# card's "160 variables" claim exactly.
+#
+# Collection short-name -> variable mapping below is GES DISC's *standard*
+# MERRA-2 collection schema (well-documented, not project-specific), but
+# has NOT yet been verified against an actual downloaded granule from this
+# project. The small-sample download step (Phase 1 step 3) will fail loudly
+# with a clear "variable not found" error if any mapping below is wrong --
+# safe to trust for the sample run, just don't skip validating it.
+
+# --- Surface variables (hourly, single-level diagnostics) ---
+# M2T1NXFLX = tavg1_2d_flx_Nx (surface turbulent flux diagnostics)
+M2T1NXFLX:
+  - EFLUX     # latent heat flux
+  - HFLUX     # sensible heat flux
+  - Z0M       # surface roughness (medium confidence -- verify collection)
+
+# M2T1NXLND = tavg1_2d_lnd_Nx (land surface diagnostics)
+M2T1NXLND:
+  - GWETROOT  # root zone soil wetness
+  - LAI       # leaf area index
+
+# M2T1NXRAD = tavg1_2d_rad_Nx (radiation diagnostics)
+M2T1NXRAD:
+  - LWGAB     # surface absorbed longwave radiation
+  - LWGEM     # surface emitted longwave radiation
+  - LWTUP     # upwelling longwave flux at TOA
+  - SWGNT     # surface net downward shortwave flux
+  - SWTNT     # TOA net downward shortwave flux
+
+# M2T1NXSLV = tavg1_2d_slv_Nx (single-level diagnostics)
+M2T1NXSLV:
+  - PS        # surface pressure
+  - QV2M      # 2m specific humidity
+  - SLP       # sea level pressure
+  - T2M       # 2m air temperature
+  - TQI       # total precipitable ice water
+  - TQL       # total precipitable liquid water
+  - TQV       # total precipitable water vapor
+  - TS        # surface skin temperature
+  - U10M      # 10m eastward wind
+  - V10M      # 10m northward wind
+
+# --- Static surface variables (time-invariant) ---
+# M2C0NXASM = const_2d_asm_Nx (constants, single file, no time dimension)
+M2C0NXASM:
+  - FRACI     # ice-covered fraction of grid cell
+  - FRLAND    # land fraction
+  - FROCEAN   # ocean fraction
+  - PHIS      # surface geopotential height
+
+# --- Vertical variables (3-hourly instantaneous, native 72 model levels) ---
+# M2I3NVASM = inst3_3d_asm_Nv. Prithvi selects the 14 levels below by value
+# from this collection's own "lev" coordinate at preprocessing time -- no
+# need to pre-subset levels when downloading; keep the full native-level
+# column so PrithviWxC/dataloaders/merra2.py's own level matching works.
+M2I3NVASM:
+  - CLOUD     # cloud fraction
+  - H         # geopotential height
+  - OMEGA     # vertical pressure velocity
+  - PL        # mid-level pressure
+  - QI        # ice mixing ratio
+  - QL        # liquid water mixing ratio
+  - QV        # specific humidity
+  - T         # temperature
+  - U         # eastward wind
+  - V         # northward wind
+
+# The 14 target model-level indices (selected from M2I3NVASM's 72 native
+# levels by PrithviWxC/dataloaders/merra2.py's Merra2Dataset -- listed here
+# for reference/documentation only, not consumed directly by
+# download_merra2.py):
+# levels: [34, 39, 41, 43, 44, 45, 48, 51, 53, 56, 63, 68, 71, 72]

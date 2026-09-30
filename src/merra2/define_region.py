@@ -1,30 +1,51 @@
-"""Snap a rough Northeast-US bounding box onto the native MERRA-2 grid.
+"""Compute a mask-unit-aligned Northeast-US bounding box on the native MERRA-2 grid.
 
-MERRA-2 is on a fixed 0.5 deg (lat) x 0.625 deg (lon) lat/lon grid, so "on the
-native grid" just means picking existing grid-cell edges rather than
-arbitrary decimal bounds -- it does not require reading a sample file. This
-script still accepts an optional sample file/OPeNDAP URL so the coordinate
-arrays can be read directly and the bbox can be checked against the *exact*
-values MERRA-2 ships (protects against off-by-one drift in the assumed 0.5/0.625
-spacing), and optionally checked for even divisibility against a Prithvi patch
-size once that is confirmed from the cloned repo.
+Confirmed from the pretrained prithvi.wxc.2300m.v1 config.yaml (fetched
+2026-09-29 from huggingface.co/Prithvi-WxC/prithvi.wxc.2300m.v1):
 
-Rough target coverage (fill in / adjust after looking at the result):
-  all six New England states, NY, adjacent Quebec/Maritime Canada,
-  and enough western Atlantic to avoid an artificially land-locked crop.
+    mask_unit_size_px: [30, 32]   # [lat pixels, lon pixels]
+    patch_size_px:     [2, 2]
+
+The model asserts `n_lats_px % mask_unit_size_px[0] == 0` and likewise for
+lon (see PrithviWxC/model.py __init__), so a regional crop's pixel counts
+MUST be exact multiples of 30 (lat) and 32 (lon) -- not just of patch_size.
+At MERRA-2's native 0.5 deg (lat) x 0.625 deg (lon) spacing that's a
+mandatory 15 deg-lat x 20 deg-lon tile size.
+
+None of the pretrained weight tensors are shaped by n_lats_px/n_lons_px
+directly -- patch/static embeddings are ordinary spatially-agnostic conv
+layers, and positional info is Fourier-encoded live from actual lat/lon
+values (positional_encoding="fourier"), not a fixed-size lookup table. So a
+regional crop is architecturally safe to load the pretrained state_dict into,
+as long as this divisibility holds. (Running the model on the full global
+360x576 grid with ~0 masking, by contrast, is not practical for a full
+year -- the official demo needs mask_ratio=0.99 just to stay small; a
+regional crop's ~50x fewer pixels is what makes a full-year pass feasible.)
+
+Recommended default: a 2x2 mask-unit tile (30 deg lat x 40 deg lon),
+covering all New England, NY, the Maritimes/southern Quebec, and a wide
+western-Atlantic margin, with non-degenerate global attention (4 global
+positions instead of 1 for a minimal 1x1 tile).
 """
 import argparse
 
 import numpy as np
 import xarray as xr
 
-# Conservative rough box requested: New England + NY + adjacent Canada + western Atlantic.
-# These are NOT snapped yet -- run this script to get the actual grid-aligned bounds.
-DEFAULT_LAT_MIN, DEFAULT_LAT_MAX = 39.0, 48.0
-DEFAULT_LON_MIN, DEFAULT_LON_MAX = -80.0, -65.0
-
 MERRA2_LAT_STEP = 0.5
 MERRA2_LON_STEP = 0.625
+
+MASK_UNIT_LAT_PX = 30  # -> 15 deg
+MASK_UNIT_LON_PX = 32  # -> 20 deg
+
+# Center roughly on the New England / Quebec border; 2x2 mask units.
+# Verified against the analytic grid below: 30.0 and -90.0 are exact MERRA-2
+# grid points, and the box below spans exactly 60 lat x 64 lon pixels
+# (2 x MASK_UNIT_LAT_PX, 2 x MASK_UNIT_LON_PX).
+DEFAULT_LAT_MIN, DEFAULT_LAT_MAX = 30.0, 59.5
+DEFAULT_LON_MIN, DEFAULT_LON_MAX = -90.0, -50.625
+DEFAULT_MASK_UNITS_LAT = 2
+DEFAULT_MASK_UNITS_LON = 2
 
 
 def snap_from_grid(lat_min, lat_max, lon_min, lon_max, lat_coord, lon_coord):
@@ -59,12 +80,8 @@ def main() -> None:
         help="Path or OPeNDAP URL to one MERRA-2 granule; if given, use its "
         "actual lat/lon coordinate arrays instead of the analytic grid.",
     )
-    parser.add_argument(
-        "--patch-size",
-        type=int,
-        default=None,
-        help="If given, warn when n_lat/n_lon are not evenly divisible by this.",
-    )
+    parser.add_argument("--mask-unit-lat-px", type=int, default=MASK_UNIT_LAT_PX)
+    parser.add_argument("--mask-unit-lon-px", type=int, default=MASK_UNIT_LON_PX)
     args = parser.parse_args()
 
     if args.sample_file:
@@ -83,13 +100,27 @@ def main() -> None:
     print(f"Grid-snapped lon bounds: {result['lon_bounds']} ({result['n_lon']} points)")
     print(f"lat index slice: {result['lat_slice']}, lon index slice: {result['lon_slice']}")
 
-    if args.patch_size:
-        for n, axis in [(result["n_lat"], "lat"), (result["n_lon"], "lon")]:
-            if n % args.patch_size != 0:
-                print(
-                    f"WARNING: n_{axis}={n} is not evenly divisible by "
-                    f"patch size {args.patch_size}; widen the box or pad."
-                )
+    ok = True
+    for n, axis, unit in [
+        (result["n_lat"], "lat", args.mask_unit_lat_px),
+        (result["n_lon"], "lon", args.mask_unit_lon_px),
+    ]:
+        if n % unit != 0:
+            ok = False
+            print(
+                f"ERROR: n_{axis}={n} is not evenly divisible by "
+                f"mask_unit size {unit}px -- PrithviWxC's constructor will "
+                f"assert-fail on this crop. Adjust bounds to a multiple of "
+                f"{unit} pixels ({unit * (MERRA2_LAT_STEP if axis == 'lat' else MERRA2_LON_STEP)} deg)."
+            )
+    if ok:
+        n_global_lat = result["n_lat"] // args.mask_unit_lat_px
+        n_global_lon = result["n_lon"] // args.mask_unit_lon_px
+        print(
+            f"OK: divisible by mask unit size. global_shape_mu = "
+            f"({n_global_lat}, {n_global_lon}) -> {n_global_lat * n_global_lon} "
+            f"global (regional) tokens per timestamp."
+        )
 
 
 if __name__ == "__main__":

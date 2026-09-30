@@ -25,10 +25,10 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 # 2 days only, per Phase 1 step 3: validate the pipeline before the full year.
 START="${START:-2024-06-01}"
 END="${END:-2024-06-02}"
-LAT_MIN="${LAT_MIN:-39.0}"
-LAT_MAX="${LAT_MAX:-48.0}"
-LON_MIN="${LON_MIN:--80.0}"
-LON_MAX="${LON_MAX:--65.0}"
+LAT_MIN="${LAT_MIN:-30.0}"
+LAT_MAX="${LAT_MAX:-59.5}"
+LON_MIN="${LON_MIN:--90.0}"
+LON_MAX="${LON_MAX:--50.625}"
 VARIABLES_CONFIG="${VARIABLES_CONFIG:-${REPO_ROOT}/configs/merra2_variables.yaml}"
 
 if [ ! -f "${VARIABLES_CONFIG}" ]; then
