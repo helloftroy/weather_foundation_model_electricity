@@ -97,7 +97,12 @@ def main() -> None:
 
         for granule in results:
             fileset = earthaccess.open([granule])
-            ds = xr.open_mfdataset(fileset, combine="by_coords")
+            # earthaccess.open() returns fsspec file-like objects with no
+            # filename/extension to sniff, so xarray's engine auto-guessing
+            # fails even though the underlying format is fine -- MERRA-2 is
+            # HDF5-based netCDF4, and h5netcdf is already installed (a
+            # Prithvi-WxC dependency), so just say so explicitly.
+            ds = xr.open_mfdataset(fileset, combine="by_coords", engine="h5netcdf")
             missing = [v for v in variables if v not in ds.variables]
             if missing:
                 raise SystemExit(f"{collection}: variables not found in granule: {missing}")
