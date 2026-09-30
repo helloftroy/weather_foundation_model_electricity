@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local credentials and environment files
+.env
+*.token
+credentials.sh
+.netrc
+
+# Large downloaded/generated data (lives in /scratch on cluster, not git)
+data/
+*.nc
+*.nc4
+*.h5
+*.zarr/
+*.npz
+*.npy
+
+# Model weights and caches
+weights/
+hf_cache/
+*.ckpt
+*.pt
+*.pth
+
+# Logs and job output
+*.out
+*.err
+logs/

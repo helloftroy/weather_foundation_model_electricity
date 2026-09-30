@@ -1,0 +1,26 @@
+# TEMPLATE -- copy to merra2_variables.yaml and fill in after inspecting
+# Prithvi-WxC's own MERRA-2 dataloader/config (Phase 1 step 2).
+# Do NOT invent a reduced variable set. Prithvi-WxC was pretrained on a fixed
+# set of ~160 MERRA-2 variables across a handful of collections (surface +
+# 3D instantaneous). Find the authoritative list in the cloned repo, e.g.
+# under PrithviWxC/dataloaders/ or similar, and mirror it exactly here.
+#
+# Format: MERRA-2 collection short_name -> list of variable names to pull
+# from that collection.
+#
+# Known MERRA-2 collections likely relevant (confirm against the repo, do not
+# assume this list is complete or correct):
+#   M2T1NXSLV  - tavg1_2d_slv_Nx (hourly single-level diagnostics)
+#   M2T1NXFLX  - tavg1_2d_flx_Nx (hourly surface fluxes)
+#   M2I3NVASM  - inst3_3d_asm_Nv (3-hourly 3D instantaneous, model levels)
+#
+# Example (placeholder values -- replace with the real list):
+# M2T1NXSLV:
+#   - T2M
+#   - U10M
+#   - V10M
+# M2I3NVASM:
+#   - T
+#   - U
+#   - V
+#   - QV
