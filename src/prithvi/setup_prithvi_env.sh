@@ -67,11 +67,16 @@ mkdir -p "${SCRATCH_ROOT}"
 if [ ! -d "${PRITHVI_REPO_DIR}" ]; then
   git clone https://github.com/NASA-IMPACT/Prithvi-WxC "${PRITHVI_REPO_DIR}"
 else
-  echo "Repo already present at ${PRITHVI_REPO_DIR}; pulling latest develop."
+  echo "Repo already present at ${PRITHVI_REPO_DIR}; pulling latest (default branch)."
   git -C "${PRITHVI_REPO_DIR}" pull
 fi
 
 pip install -e "${PRITHVI_REPO_DIR}[examples]"
+
+# Not Prithvi-WxC dependencies -- needed by our own scripts (earthaccess for
+# MERRA-2 download, pyarrow as pandas' parquet engine for every compact
+# table we write) and not covered by the -e install above.
+pip install earthaccess pyarrow
 
 echo "${TARGET_ENV}" > "${SCRATCH_ROOT}/prithvi_env_path.txt"
 echo ""

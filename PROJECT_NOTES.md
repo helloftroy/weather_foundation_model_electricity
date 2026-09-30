@@ -102,7 +102,7 @@ climatology into scratch via `huggingface_hub`.
 
 ### 2. Sample inference validation (gpu-a100)
 
-```bash
+```bash (DONE ~~)
 sbatch --account=191001-364393 cluster/sbatch/gpu/01_prithvi_sample_inference.sbatch
 ```
 Runs `src/prithvi/sample_validation.py` -- the same official
