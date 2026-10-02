@@ -125,6 +125,10 @@ def main() -> None:
 
     manifest_rows = []
     for collection, variables in config.items():
+        if collection == "static_surface_vars":
+            # Not a GES DISC collection -- a model-input grouping consumed
+            # directly by build_daily_prithvi_files.py. Skip it here.
+            continue
         coll_dir = args.out_dir / collection
         coll_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n=== Collection: {collection} | variables: {variables} ===")

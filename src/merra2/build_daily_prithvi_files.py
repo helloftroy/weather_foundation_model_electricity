@@ -14,7 +14,16 @@ regional crop as long as we hand it files in exactly its expected format:
             0 for midnight)
         one (time, lat, lon) dataset per surface_vars short name
         one (lat, lon) dataset per static_surface_vars short name (no time
-            dimension -- these are read directly by key, undated)
+            dimension -- these are read directly by key, undated). Note
+            "static_surface_vars" is a MODEL-input grouping, not a GES DISC
+            property: FRACI (sea ice fraction) is physically time-varying
+            and is fetched from a regular hourly collection like any other
+            surface var, then collapsed here to one representative per-day
+            (lat, lon) snapshot (first synoptic hour) to match what
+            Merra2Dataset actually reads at this key -- a bare (time, lat,
+            lon) array there would raise a numpy broadcast error, since
+            _read_static_data assigns handle[key][()] into a single (lat,
+            lon) slot with no time indexing at all.
     MERRA_pres_YYYYMMDD.nc -- one per day, containing:
         'lat', 'lon', 'lev' (native MERRA-2 model level index, 1..72),
             'time' as above
@@ -146,11 +155,18 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_variable_config(args.variables_config)
+    # "static_surface_vars" is a model-input grouping (which vars get fed as
+    # a single per-day snapshot), not a GES DISC collection -- some of its
+    # members (e.g. FRACI) physically live in an otherwise time-varying
+    # collection. Exclude it from the collection->files iteration below.
+    static_surface_vars = config.get("static_surface_vars", [])
     surface_collections = {
-        k: v for k, v in config.items() if k not in (STATIC_COLLECTION, VERTICAL_COLLECTION)
+        k: v for k, v in config.items()
+        if k not in (STATIC_COLLECTION, VERTICAL_COLLECTION, "static_surface_vars")
     }
 
-    # Static vars: read once, reused for every day.
+    # True time-invariant vars (e.g. FRLAND/FROCEAN/PHIS): read once from the
+    # constants collection, reused unchanged for every day.
     static_ds = open_collection_day(args.data_dir, STATIC_COLLECTION, pd.Timestamp(args.start))
     if static_ds is None:
         raise SystemExit(
@@ -158,15 +174,16 @@ def main() -> None:
             "The const_2d_asm_Nx collection has no time dimension to match against a day -- "
             "if this fails, re-download it without a --start/--end temporal filter."
         )
-    static_arrays = {}
+    constant_static_arrays = {}
     for var in config.get(STATIC_COLLECTION, []):
         arr = static_ds[var].values
-        static_arrays[var] = arr[0] if arr.ndim == 3 else arr  # drop leading time dim of length 1, if present
+        constant_static_arrays[var] = arr[0] if arr.ndim == 3 else arr  # drop leading time dim of length 1, if present
 
     days = pd.date_range(args.start, args.end, freq="D")
     n_written = 0
     for day in days:
         surface_arrays = {}
+        daily_static_arrays = {}  # e.g. FRACI: time-varying collection, but fed to the model as one per-day snapshot
         lat = lon = None
         missing_collections = []
         for collection, variables in surface_collections.items():
@@ -181,7 +198,17 @@ def main() -> None:
             for var in variables:
                 if var not in ds:
                     raise SystemExit(f"{day.date()}: variable '{var}' not found in collection {collection}")
-                surface_arrays[var] = ds[var].values
+                arr = ds[var].values
+                if var in static_surface_vars:
+                    # Merra2Dataset reads static_surface_vars as a single
+                    # undated (lat, lon) array (no time indexing at all --
+                    # see PrithviWxC/dataloaders/merra2.py's
+                    # _read_static_data) -- collapse to the first synoptic
+                    # hour (00:00 UTC) as a representative daily snapshot,
+                    # rather than keeping the full (time, lat, lon) series.
+                    daily_static_arrays[var] = arr[0]
+                else:
+                    surface_arrays[var] = arr
 
         if missing_collections:
             print(f"{day.date()}: skipping, missing surface collections {missing_collections}")
@@ -201,7 +228,7 @@ def main() -> None:
 
         write_surface_file(
             args.out_dir_surface / f"MERRA2_sfc_{day.strftime('%Y%m%d')}.nc",
-            day, lat, lon, surface_arrays, static_arrays,
+            day, lat, lon, surface_arrays, {**constant_static_arrays, **daily_static_arrays},
         )
         write_vertical_file(
             args.out_dir_vertical / f"MERRA_pres_{day.strftime('%Y%m%d')}.nc",
