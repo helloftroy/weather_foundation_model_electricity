@@ -14,16 +14,18 @@ regional crop as long as we hand it files in exactly its expected format:
             0 for midnight)
         one (time, lat, lon) dataset per surface_vars short name
         one (lat, lon) dataset per static_surface_vars short name (no time
-            dimension -- these are read directly by key, undated). Note
-            "static_surface_vars" is a MODEL-input grouping, not a GES DISC
-            property: FRACI (sea ice fraction) is physically time-varying
-            and is fetched from a regular hourly collection like any other
-            surface var, then collapsed here to one representative per-day
-            (lat, lon) snapshot (first synoptic hour) to match what
-            Merra2Dataset actually reads at this key -- a bare (time, lat,
-            lon) array there would raise a numpy broadcast error, since
-            _read_static_data assigns handle[key][()] into a single (lat,
-            lon) slot with no time indexing at all.
+            dimension -- Merra2Dataset's _read_static_data reads these
+            directly by key with no time indexing at all, so each must be a
+            bare 2D array here). Sourced from M2C0NXCTM (const_2d_ctm_Nx),
+            NOT M2C0NXASM (const_2d_asm_Nx) -- confirmed from GES DISC's own
+            MERRA-2 file specification: M2C0NXASM's constants table has no
+            ice-fraction variable at all, while M2C0NXCTM has a variable
+            named exactly "FRACI" alongside FRLAND/FROCEAN/PHIS, so all four
+            of Prithvi's static_surface_vars come from this one collection.
+            It's a single granule but NOT a true single instant like
+            M2C0NXASM -- "time-invariant but duplicated for each month" (a
+            repeating monthly climatology, time=12) -- so the time index
+            used here is (day.month - 1), not always 0.
     MERRA_pres_YYYYMMDD.nc -- one per day, containing:
         'lat', 'lon', 'lev' (native MERRA-2 model level index, 1..72),
             'time' as above
@@ -56,13 +58,27 @@ import pandas as pd
 import xarray as xr
 import yaml
 
-STATIC_COLLECTION = "M2C0NXASM"
+STATIC_COLLECTION = "M2C0NXCTM"
 VERTICAL_COLLECTION = "M2I3NVASM"
 SYNOPTIC_HOURS = [0, 3, 6, 9, 12, 15, 18, 21]
 
 
 def load_variable_config(path: Path) -> dict:
     return yaml.safe_load(path.read_text())
+
+
+def open_static_collection(data_dir: Path, collection: str) -> xr.Dataset | None:
+    """Open a constants collection with NO day-based time filtering -- its
+    time dimension (e.g. M2C0NXCTM's 12 monthly slices) doesn't represent
+    real per-day instants, so open_collection_day's .sel(time=slice(day,
+    ...)) would incorrectly try to match it against actual calendar dates."""
+    coll_dir = data_dir / collection
+    if not coll_dir.is_dir():
+        return None
+    files = sorted(coll_dir.glob("*.nc"))
+    if not files:
+        return None
+    return xr.open_mfdataset(files, combine="by_coords", decode_times=True)
 
 
 def open_collection_day(data_dir: Path, collection: str, day: pd.Timestamp) -> xr.Dataset | None:
@@ -155,35 +171,48 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_variable_config(args.variables_config)
-    # "static_surface_vars" is a model-input grouping (which vars get fed as
-    # a single per-day snapshot), not a GES DISC collection -- some of its
-    # members (e.g. FRACI) physically live in an otherwise time-varying
-    # collection. Exclude it from the collection->files iteration below.
-    static_surface_vars = config.get("static_surface_vars", [])
     surface_collections = {
-        k: v for k, v in config.items()
-        if k not in (STATIC_COLLECTION, VERTICAL_COLLECTION, "static_surface_vars")
+        k: v for k, v in config.items() if k not in (STATIC_COLLECTION, VERTICAL_COLLECTION)
     }
 
-    # True time-invariant vars (e.g. FRLAND/FROCEAN/PHIS): read once from the
-    # constants collection, reused unchanged for every day.
-    static_ds = open_collection_day(args.data_dir, STATIC_COLLECTION, pd.Timestamp(args.start))
+    # Opened once (one small file covering all 12 "monthly" slices) and
+    # re-sliced per day below -- NOT reused unchanged across all days, since
+    # M2C0NXCTM is a monthly climatology (time=12), not a true single
+    # constant like M2C0NXASM.
+    static_ds = open_static_collection(args.data_dir, STATIC_COLLECTION)
     if static_ds is None:
         raise SystemExit(
             f"No data found for static collection {STATIC_COLLECTION} under {args.data_dir}. "
-            "The const_2d_asm_Nx collection has no time dimension to match against a day -- "
+            "This constants collection has no time dimension to match against a specific day -- "
             "if this fails, re-download it without a --start/--end temporal filter."
         )
-    constant_static_arrays = {}
-    for var in config.get(STATIC_COLLECTION, []):
-        arr = static_ds[var].values
-        constant_static_arrays[var] = arr[0] if arr.ndim == 3 else arr  # drop leading time dim of length 1, if present
+    if "time" not in static_ds.dims or static_ds.sizes["time"] != 12:
+        raise SystemExit(
+            f"Expected {STATIC_COLLECTION} to have a time dimension of size 12 (one per "
+            f"calendar month), got dims={dict(static_ds.sizes)}. The month-index lookup "
+            "below assumes this; update it if the collection's actual layout differs."
+        )
+    # Don't assume Jan..Dec storage order -- if the time coordinate decoded
+    # as real dates, map each calendar month to its actual slice index;
+    # otherwise fall back to the natural assumption (index 0 = January).
+    try:
+        actual_months = pd.DatetimeIndex(static_ds["time"].values).month
+        month_to_time_idx = {int(m): i for i, m in enumerate(actual_months)}
+        assert set(month_to_time_idx) == set(range(1, 13))
+    except Exception:
+        month_to_time_idx = {m: m - 1 for m in range(1, 13)}
 
     days = pd.date_range(args.start, args.end, freq="D")
     n_written = 0
     for day in days:
+        static_arrays = {
+            # .isel (not raw .values[idx]) to index the "time" dim by label
+            # regardless of its actual position among the var's axes.
+            var: static_ds[var].isel(time=month_to_time_idx[day.month]).values
+            for var in config.get(STATIC_COLLECTION, [])
+        }
+
         surface_arrays = {}
-        daily_static_arrays = {}  # e.g. FRACI: time-varying collection, but fed to the model as one per-day snapshot
         lat = lon = None
         missing_collections = []
         for collection, variables in surface_collections.items():
@@ -198,17 +227,7 @@ def main() -> None:
             for var in variables:
                 if var not in ds:
                     raise SystemExit(f"{day.date()}: variable '{var}' not found in collection {collection}")
-                arr = ds[var].values
-                if var in static_surface_vars:
-                    # Merra2Dataset reads static_surface_vars as a single
-                    # undated (lat, lon) array (no time indexing at all --
-                    # see PrithviWxC/dataloaders/merra2.py's
-                    # _read_static_data) -- collapse to the first synoptic
-                    # hour (00:00 UTC) as a representative daily snapshot,
-                    # rather than keeping the full (time, lat, lon) series.
-                    daily_static_arrays[var] = arr[0]
-                else:
-                    surface_arrays[var] = arr
+                surface_arrays[var] = ds[var].values
 
         if missing_collections:
             print(f"{day.date()}: skipping, missing surface collections {missing_collections}")
@@ -228,7 +247,7 @@ def main() -> None:
 
         write_surface_file(
             args.out_dir_surface / f"MERRA2_sfc_{day.strftime('%Y%m%d')}.nc",
-            day, lat, lon, surface_arrays, {**constant_static_arrays, **daily_static_arrays},
+            day, lat, lon, surface_arrays, static_arrays,
         )
         write_vertical_file(
             args.out_dir_vertical / f"MERRA_pres_{day.strftime('%Y%m%d')}.nc",

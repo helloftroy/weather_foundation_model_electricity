@@ -41,13 +41,14 @@ import earthaccess
 import xarray as xr
 import yaml
 
-# M2C0NXASM (const_2d_asm_Nx) is MERRA-2's time-invariant constants
-# collection -- a single global granule with no real date, not one per day.
-# Applying a --start/--end temporal filter to it (as to every other
-# collection) excludes its one granule whenever the requested range doesn't
-# happen to cover its actual (arbitrary, pre-2024) timestamp, silently
-# yielding zero results. See docs/merra2_region_and_variables.md.
-STATIC_COLLECTIONS = {"M2C0NXASM"}
+# M2C0NXCTM (const_2d_ctm_Nx) is MERRA-2's constants-for-CTM-usage
+# collection -- a single global granule with no real date, not one per day
+# (its 12 "monthly" slices are all in that one granule). Applying a
+# --start/--end temporal filter to it (as to every other collection)
+# excludes its one granule whenever the requested range doesn't happen to
+# cover its actual (arbitrary, pre-2024) timestamp, silently yielding zero
+# results. See docs/merra2_region_and_variables.md.
+STATIC_COLLECTIONS = {"M2C0NXCTM"}
 
 
 def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5):
@@ -125,10 +126,6 @@ def main() -> None:
 
     manifest_rows = []
     for collection, variables in config.items():
-        if collection == "static_surface_vars":
-            # Not a GES DISC collection -- a model-input grouping consumed
-            # directly by build_daily_prithvi_files.py. Skip it here.
-            continue
         coll_dir = args.out_dir / collection
         coll_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n=== Collection: {collection} | variables: {variables} ===")

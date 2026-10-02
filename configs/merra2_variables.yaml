@@ -13,31 +13,12 @@
 # with a clear "variable not found" error if any mapping below is wrong --
 # safe to trust for the sample run, just don't skip validating it.
 
-# Prithvi's "static_surface_vars" model-input group -- NOT a GES DISC
-# collection, just which of the variables fetched below (wherever they
-# physically live) get fed to the model as a single per-day (lat, lon)
-# snapshot instead of a full per-timestep (time, lat, lon) series.
-# build_daily_prithvi_files.py reads this key directly; download_merra2.py
-# ignores it (it only iterates actual collection short names below).
-static_surface_vars:
-  - FRACI     # lives in M2T1NXFLX (time-varying collection) -- see that entry
-  - FRLAND    # lives in M2C0NXASM (the true time-invariant constants collection)
-  - FROCEAN
-  - PHIS
-
 # --- Surface variables (hourly, single-level diagnostics) ---
 # M2T1NXFLX = tavg1_2d_flx_Nx (surface turbulent flux diagnostics)
 M2T1NXFLX:
   - EFLUX     # latent heat flux
   - HFLUX     # sensible heat flux
   - Z0M       # surface roughness (medium confidence -- verify collection)
-  - FRACI     # ice-covered fraction -- confirmed here, NOT in M2C0NXASM (see
-              # below): despite being one of Prithvi's "static_surface_vars",
-              # sea ice fraction is physically time-varying, so GES DISC
-              # doesn't carry it in the constants collection. "static" there
-              # is a model-input grouping (sampled once per example), not a
-              # MERRA-2 collection. Confirmed 2026-10-02 after the const
-              # collection granule genuinely lacked it.
 
 # M2T1NXLND = tavg1_2d_lnd_Nx (land surface diagnostics)
 M2T1NXLND:
@@ -65,13 +46,23 @@ M2T1NXSLV:
   - U10M      # 10m eastward wind
   - V10M      # 10m northward wind
 
-# --- Static surface variables (time-invariant) ---
-# M2C0NXASM = const_2d_asm_Nx (constants, single file, no time dimension).
-# FRACI is NOT here despite being one of Prithvi's "static_surface_vars" --
-# see the M2T1NXFLX entry above for why.
-M2C0NXASM:
-  - FRLAND    # land fraction
-  - FROCEAN   # ocean fraction
+# --- Static surface variables (Prithvi's static_surface_vars group) ---
+# M2C0NXCTM = const_2d_ctm_Nx ("Constant Model Parameters for Usage by CTM"),
+# NOT M2C0NXASM (const_2d_asm_Nx) -- confirmed from GES DISC's own MERRA-2
+# file specification (MERRA2.README.pdf) 2026-10-02, after a real downloaded
+# M2C0NXASM granule genuinely lacked FRACI. M2C0NXASM's constants table has
+# FRLAND/FROCEAN/PHIS but no ice-fraction variable at all; M2C0NXCTM is the
+# only collection with a variable named exactly "FRACI" (fraction of ice),
+# alongside FRLAND/FROCEAN/PHIS too -- so all four of Prithvi's
+# static_surface_vars come from here, not split across two collections.
+# Single granule, dimensions (lon=576, lat=361, time=12) -- "time-invariant
+# but duplicated for each month" (a repeating monthly climatology, not a
+# true single instant like M2C0NXASM): build_daily_prithvi_files.py selects
+# time index (day.month - 1) for each day, not always index 0.
+M2C0NXCTM:
+  - FRACI     # fraction of ice
+  - FRLAND    # fraction of land
+  - FROCEAN   # fraction of ocean
   - PHIS      # surface geopotential height
 
 # --- Vertical variables (3-hourly instantaneous, native 72 model levels) ---
