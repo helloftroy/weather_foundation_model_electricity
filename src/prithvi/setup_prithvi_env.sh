@@ -75,8 +75,10 @@ pip install -e "${PRITHVI_REPO_DIR}[examples]"
 
 # Not Prithvi-WxC dependencies -- needed by our own scripts (earthaccess for
 # MERRA-2 download, pyarrow as pandas' parquet engine for every compact
-# table we write) and not covered by the -e install above.
-pip install earthaccess pyarrow
+# table we write, dask for build_daily_prithvi_files.py's open_mfdataset
+# across a full year of per-day granules) and not covered by the -e install
+# above.
+pip install earthaccess pyarrow dask
 
 echo "${TARGET_ENV}" > "${SCRATCH_ROOT}/prithvi_env_path.txt"
 echo ""

@@ -41,6 +41,14 @@ import earthaccess
 import xarray as xr
 import yaml
 
+# M2C0NXASM (const_2d_asm_Nx) is MERRA-2's time-invariant constants
+# collection -- a single global granule with no real date, not one per day.
+# Applying a --start/--end temporal filter to it (as to every other
+# collection) excludes its one granule whenever the requested range doesn't
+# happen to cover its actual (arbitrary, pre-2024) timestamp, silently
+# yielding zero results. See docs/merra2_region_and_variables.md.
+STATIC_COLLECTIONS = {"M2C0NXASM"}
+
 
 def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5):
     """Fetch one granule, crop to the region, and write it out, retrying on
@@ -121,11 +129,12 @@ def main() -> None:
         coll_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n=== Collection: {collection} | variables: {variables} ===")
 
-        results = earthaccess.search_data(
-            short_name=collection,
-            temporal=(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")),
-            bounding_box=bbox,
-        )
+        search_kwargs = dict(short_name=collection, bounding_box=bbox)
+        if collection not in STATIC_COLLECTIONS:
+            search_kwargs["temporal"] = (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+        else:
+            print(f"{collection} is a static/time-invariant collection -- searching with no temporal filter.")
+        results = earthaccess.search_data(**search_kwargs)
         print(f"Found {len(results)} granules for {collection}")
 
         for granule in results:

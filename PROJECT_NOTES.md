@@ -126,13 +126,14 @@ sourced directly from the pretrained model's own `config.yaml` and official
 inference notebook, not guessed. Re-run `src/merra2/define_region.py` only
 if the region needs to change.
 
-```bash
+```bash (DONE~~)
 sbatch --account=191001-364393 cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
 
 sbatch --account=191001-364393 \
   --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
   cluster/sbatch/service/02_download_merra2_sample.sbatch
 
+## DONE~~
 sbatch --account=191001-364393 \
   --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
   cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
@@ -142,10 +143,12 @@ sbatch --account=191001-364393 \
 
 Requires a free ISO Express account (see `docs/isone_demand_sources.md`).
 
-```bash
-export ISONE_WS_USERNAME="..."
-export ISONE_WS_PASSWORD="..."
-sbatch cluster/sbatch/service/04_download_isone_demand_2024.sbatch
+```bash (DONE~~)
+export ISONE_WS_USERNAME="parkmhelen@gmail.com"
+export ISONE_WS_PASSWORD="jSJ9!NkcCex4yjF"
+sbatch --account=191001-364393 \
+  --export=ALL,ISONE_WS_USERNAME='parkmhelen@gmail.com',ISONE_WS_PASSWORD='jSJ9!NkcCex4yjF' \
+  cluster/sbatch/service/04_download_isone_demand_2024.sbatch
 ```
 
 ### 5. QC (morrill, CPU, no internet)
