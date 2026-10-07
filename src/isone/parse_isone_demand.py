@@ -33,28 +33,44 @@ def _first_present(d: dict, keys: list[str]):
     return None
 
 
+def _find_records(node) -> list[dict]:
+    """Collect every dict that has a BeginDate-style key, at any depth, so the
+    parser doesn't depend on the exact wrapper names ISO-NE's JSON uses."""
+    found = []
+    if isinstance(node, dict):
+        if any(k in node for k in BEGIN_DATE_KEYS):
+            found.append(node)
+        else:
+            for v in node.values():
+                found.extend(_find_records(v))
+    elif isinstance(node, list):
+        for v in node:
+            found.extend(_find_records(v))
+    return found
+
+
+def _describe(node, depth: int = 0, max_depth: int = 4) -> str:
+    """Short structural summary of a JSON payload, for error messages."""
+    if depth >= max_depth:
+        return "..."
+    if isinstance(node, dict):
+        return "{" + ", ".join(f"{k}: {_describe(v, depth + 1)}" for k, v in list(node.items())[:8]) + "}"
+    if isinstance(node, list):
+        return f"[{len(node)} x {_describe(node[0], depth + 1) if node else 'empty'}]"
+    return type(node).__name__
+
+
 def parse_one_file(path: Path) -> list[dict]:
-    payload = json.loads(path.read_text())
+    text = path.read_text()
+    if not text.strip():
+        raise ValueError(f"{path}: file is empty")
+    payload = json.loads(text)
 
-    records = None
-    for wrapper in DEMAND_WRAPPER_KEYS:
-        if wrapper in payload:
-            inner = payload[wrapper]
-            for list_key in DEMAND_LIST_KEYS:
-                if list_key in inner:
-                    records = inner[list_key]
-                    break
-            break
-
-    if records is None:
+    records = _find_records(payload)
+    if not records:
         raise ValueError(
-            f"{path}: couldn't find a known demand wrapper/list key. "
-            f"Top-level keys were: {list(payload.keys())}. "
-            "Inspect this file by hand and update DEMAND_WRAPPER_KEYS/DEMAND_LIST_KEYS."
+            f"{path}: no record with a BeginDate-style key found. Structure: {_describe(payload)}"
         )
-
-    if isinstance(records, dict):
-        records = [records]
 
     rows = []
     for rec in records:
@@ -62,8 +78,8 @@ def parse_one_file(path: Path) -> list[dict]:
         load = _first_present(rec, LOAD_KEYS)
         location = rec.get("Location", {})
         loc_id = _first_present(location, LOCATION_ID_KEYS) if isinstance(location, dict) else None
-        if begin_date is None or load is None:
-            raise ValueError(f"{path}: record missing BeginDate/Load. Record was: {rec}")
+        if load is None:
+            raise ValueError(f"{path}: record has no known load key ({LOAD_KEYS}). Record was: {rec}")
         rows.append({"timestamp_raw": begin_date, "demand_MW": float(load), "location_id_raw": loc_id})
     return rows
 
@@ -87,7 +103,7 @@ def main() -> None:
         raw_path = Path(r["raw_json_path"])
         try:
             parsed = parse_one_file(raw_path)
-        except (ValueError, json.JSONDecodeError) as e:
+        except (ValueError, json.JSONDecodeError, OSError) as e:
             n_failed += 1
             if n_failed <= 5:
                 print(f"WARN: {e}")
@@ -98,6 +114,15 @@ def main() -> None:
 
     if n_failed:
         print(f"{n_failed}/{len(index_df)} files failed to parse -- see warnings above (first 5 shown).")
+
+    if not all_rows:
+        raise SystemExit(
+            f"No demand rows parsed for series '{args.series}': index had {len(index_df)} "
+            f"(zone, day) entries and {n_failed} files failed to parse. "
+            + ("The index is empty, so the download wrote no raw files -- check the "
+               "download job's log for HTTP errors or an unmatched-zones warning."
+               if len(index_df) == 0 else "See the WARN lines above for the actual file structure.")
+        )
 
     df = pd.DataFrame(all_rows)
     # NOT yet labeled UTC or Eastern -- ISO-NE's BeginDate timezone convention

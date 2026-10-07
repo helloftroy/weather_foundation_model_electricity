@@ -130,12 +130,12 @@ if the region needs to change.
 sbatch --account=191001-364393 cluster/sbatch/service/02_download_merra2_sample.sbatch   # 2 days, validate pipeline
 
 sbatch --account=191001-364393 \
-  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
+  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='<EARTHDATA_PASSWORD>' \
   cluster/sbatch/service/02_download_merra2_sample.sbatch
 
 ## DONE~~
 sbatch --account=191001-364393 \
-  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='!U$xPzmDS)%&%!8' \
+  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='<EARTHDATA_PASSWORD>' \
   cluster/sbatch/service/03_download_merra2_2024.sbatch     # full year, only after 02 checks out
 ```
 
@@ -145,16 +145,16 @@ Requires a free ISO Express account (see `docs/isone_demand_sources.md`).
 
 ```bash (DONE~~)
 export ISONE_WS_USERNAME="parkmhelen@gmail.com"
-export ISONE_WS_PASSWORD="jSJ9!NkcCex4yjF"
+export ISONE_WS_PASSWORD="<ISONE_PASSWORD>"
 sbatch --account=191001-364393 \
-  --export=ALL,ISONE_WS_USERNAME='parkmhelen@gmail.com',ISONE_WS_PASSWORD='jSJ9!NkcCex4yjF' \
+  --export=ALL,ISONE_WS_USERNAME='parkmhelen@gmail.com',ISONE_WS_PASSWORD='<ISONE_PASSWORD>' \
   cluster/sbatch/service/04_download_isone_demand_2024.sbatch
 ```
 
 ### 5. QC (morrill, CPU, no internet)
 
-```bash
-sbatch cluster/sbatch/cpu_morrill/01_qc_merra2_isone.sbatch
+```bash (DONE~~)
+sbatch --account=191001-364393 cluster/sbatch/cpu_morrill/01_qc_merra2_isone.sbatch
 ```
 Produces `qc/qc_report_2024.json`: MERRA-2 timestamp coverage/variables and
 ISO-NE row counts/zone/date coverage. Does not interpolate or merge the two
@@ -192,8 +192,13 @@ per-GES-DISC-collection downloads into that format, resampling the
 half-hour-offset tavg1 surface products onto the exact 3-hourly synoptic
 grid the vertical data uses.
 
-```bash
-sbatch cluster/sbatch/cpu_morrill/02_build_daily_prithvi_files.sbatch
+bash (DONE~~)
+sbatch --account=191001-364393 \
+  --export=ALL,EARTHDATA_USERNAME='parkmhelen',EARTHDATA_PASSWORD='<EARTHDATA_PASSWORD>' \
+  cluster/sbatch/service/03_download_merra2_2024.sbatch 
+
+```bash (DONE~~)
+sbatch --account=191001-364393 cluster/sbatch/cpu_morrill/02_build_daily_prithvi_files.sbatch
 ```
 
 ### 2. Crop the global climatology to our region (morrill)
@@ -203,14 +208,14 @@ sbatch cluster/sbatch/cpu_morrill/02_build_daily_prithvi_files.sbatch
 output. The global climatology already downloaded in Phase 1 just needs
 cropping to our bbox:
 
-```bash
-sbatch cluster/sbatch/cpu_morrill/03_crop_climatology.sbatch
+```bash (done~~)
+sbatch --account=191001-364393 cluster/sbatch/cpu_morrill/03_crop_climatology.sbatch
 ```
 
 ### 3. Extract embeddings (gpu-a100)
 
-```bash
-sbatch cluster/sbatch/gpu/02_extract_embeddings.sbatch
+```bash (DONE~~)
+sbatch --account=191001-364393 cluster/sbatch/gpu/02_extract_embeddings.sbatch
 ```
 Runs the frozen encoder (`mask_ratio_inputs=0.0`, full token coverage) over
 every 2024 timestamp, saving both a compact global-pooled embedding
