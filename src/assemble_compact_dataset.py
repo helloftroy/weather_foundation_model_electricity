@@ -40,6 +40,12 @@ def main() -> None:
     weather = pd.read_parquet(args.conventional_weather_parquet)
     demand = pd.read_parquet(args.isone_demand_parquet)
 
+    # merge/merge_asof need identical key dtypes; parquet round-trips can
+    # leave these at different datetime resolutions.
+    emb["timestamp"] = pd.to_datetime(emb["timestamp"]).astype("datetime64[ns]")
+    weather["timestamp"] = pd.to_datetime(weather["timestamp"]).astype("datetime64[ns]")
+    demand["timestamp_parsed"] = pd.to_datetime(demand["timestamp_parsed"]).astype("datetime64[ns]")
+
     weather_cols = [c for c in weather.columns if c != "timestamp"]
     combined_weather = emb.merge(weather, on="timestamp", how="inner")
     print(f"Embeddings: {len(emb)} rows. Weather: {len(weather)} rows. Combined weather+embedding: {len(combined_weather)} rows.")

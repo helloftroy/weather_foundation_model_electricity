@@ -17,7 +17,8 @@ day-ahead is kept alongside for comparison, clearly labeled by endpoint.
 Zone location IDs are ISO-NE's fixed load-zone IDs (4001-4008). The script
 prints the names the API reports for them (from /locations/all) so a wrong
 mapping is visible in the log, tests one request before the full run, skips
-files already downloaded, and exits non-zero if nothing was written.
+files already downloaded, waits out HTTP 429 rate limits, and exits non-zero
+if nothing was written.
 """
 import argparse
 import csv
@@ -95,6 +96,25 @@ def probe(session: requests.Session, day_str: str) -> None:
         raise SystemExit(f"Probe request failed with HTTP {resp.status_code}; not starting the full download.")
 
 
+def fetch(session: requests.Session, url: str, max_rate_limit_waits: int = 12):
+    """GET one URL. On HTTP 429 (rate limit), wait and retry the same request
+    rather than skipping it: honour Retry-After if given, else back off from
+    1 minute up to 15. Returns (ok, detail, response)."""
+    resp = None
+    for attempt in range(max_rate_limit_waits + 1):
+        try:
+            resp = session.get(url, timeout=60)
+        except requests.RequestException as e:
+            return False, str(e), None
+        if resp.status_code != 429:
+            return resp.status_code == 200, f"HTTP {resp.status_code}", resp
+        retry_after = resp.headers.get("Retry-After", "")
+        wait = int(retry_after) if retry_after.isdigit() else min(60 * 2 ** attempt, 900)
+        print(f"  rate limited (HTTP 429); waiting {wait}s before retrying", flush=True)
+        time.sleep(wait)
+    return False, "HTTP 429 (still rate limited after repeated waits)", resp
+
+
 def daterange(start: date, end: date):
     day = start
     while day <= end:
@@ -107,7 +127,7 @@ def main() -> None:
     parser.add_argument("--start", default="2024-01-01")
     parser.add_argument("--end", default="2024-12-31")
     parser.add_argument("--out-dir", required=True, type=Path)
-    parser.add_argument("--sleep-seconds", type=float, default=0.5, help="Throttle between requests")
+    parser.add_argument("--sleep-seconds", type=float, default=1.5, help="Pause between requests (ISO-NE rate-limits bursts)")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -136,19 +156,14 @@ def main() -> None:
                     rows.append([zone_name, loc_id, day.isoformat(), str(raw_path)])
                     continue
                 url = f"{BASE_URL}/{endpoint}/day/{day_str}/location/{loc_id}.json"
-                try:
-                    resp = session.get(url, timeout=60)
-                    ok = resp.status_code == 200
-                    detail = f"HTTP {resp.status_code}"
-                except requests.RequestException as e:
-                    ok, detail = False, str(e)
+                ok, detail, resp = fetch(session, url)
                 if not ok:
                     n_failed += 1
                     consecutive_failures += 1
                     print(f"  {series_name} {zone_name} {day_str}: {detail}", flush=True)
-                    if consecutive_failures >= 20:
+                    if consecutive_failures >= 5:
                         raise SystemExit(
-                            f"20 requests in a row failed (last: {detail}); stopping. "
+                            f"5 requests in a row failed (last: {detail}); stopping. "
                             "Re-run to resume -- completed files are skipped."
                         )
                     time.sleep(args.sleep_seconds * 4)

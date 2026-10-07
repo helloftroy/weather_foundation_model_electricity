@@ -1,17 +1,12 @@
 """Parse the raw per-day ISO-NE JSON (from download_isone_demand.py) into a
 clean timestamp | zone | demand_MW | series table.
 
-The exact JSON key casing from ISO-NE's XML->JSON auto-conversion is NOT
-independently verifiable without a live sample (their docs only describe the
-underlying XSD: HourlyRtDemand/HourlyDaDemand each have BeginDate, a Location
-reference, and a Load value -- see docs/isone_demand_sources.md). This parser
-tries the documented field names under a few plausible wrapper/casing
-variants and fails loudly with the raw top-level keys if none match, so a
-mismatch is a quick fix against one real file rather than a silent bad join.
-
-VERIFY ON CLUSTER: run this against one real downloaded raw JSON file first
-(a handful, not the whole year) and eyeball the output before trusting a
-full-year parse.
+Format confirmed against a real response (2026-10-07):
+{"HourlyRtDemands": {"HourlyRtDemand": [{"BeginDate":
+"2024-01-01T00:00:00.000-05:00", "Location": {"$": ".Z.MAINE", "@LocId":
+"4001"}, "Load": 1211.896}, ...]}}. BeginDate is local Eastern time with its
+UTC offset; output timestamp_parsed is UTC (timezone-naive) and
+timestamp_local / utc_offset_hours preserve the local view.
 """
 import argparse
 import json
@@ -125,23 +120,24 @@ def main() -> None:
         )
 
     df = pd.DataFrame(all_rows)
-    # NOT yet labeled UTC or Eastern -- ISO-NE's BeginDate timezone convention
-    # is unconfirmed (see docs/isone_demand_sources.md). Parse as naive/local
-    # to whatever the string says and require explicit confirmation before
-    # this is treated as either zone, per the "don't silently convert
-    # timestamps" instruction.
-    df["timestamp_parsed"] = pd.to_datetime(df["timestamp_raw"], errors="coerce")
-    n_bad_ts = df["timestamp_parsed"].isna().sum()
+    # BeginDate is local Eastern time with an explicit UTC offset, e.g.
+    # "2024-01-01T00:00:00.000-05:00" (-04:00 during daylight saving), and
+    # marks the START of the hour. Convert via the offset to UTC so it lines
+    # up with MERRA-2 (UTC); keep the local wall-clock time and offset too.
+    ts_utc = pd.to_datetime(df["timestamp_raw"], utc=True, errors="coerce")
+    n_bad_ts = int(ts_utc.isna().sum())
     if n_bad_ts:
-        print(f"WARNING: {n_bad_ts} rows had an unparseable timestamp_raw value -- inspect timestamp_raw format by hand.")
-    print(
-        "NOTE: timestamp_parsed's timezone (UTC vs. Eastern, and DST handling) "
-        "is NOT yet confirmed -- check a few known-hour values by hand against "
-        "ISO-NE's dashboard before using this for modeling. See "
-        "docs/isone_demand_sources.md."
-    )
+        print(f"WARNING: {n_bad_ts} rows had an unparseable timestamp_raw value.")
+    df["timestamp_parsed"] = ts_utc.dt.tz_localize(None).astype("datetime64[ns]")  # UTC, timezone-naive like the weather tables
+    ts_local = ts_utc.dt.tz_convert("America/New_York")
+    df["timestamp_local"] = ts_local.dt.tz_localize(None).astype("datetime64[ns]")
+    df["utc_offset_hours"] = ts_local.map(lambda x: x.utcoffset().total_seconds() / 3600 if pd.notna(x) else float("nan"))
 
-    df = df[["timestamp_parsed", "timestamp_raw", "zone", "demand_MW", "location_id_raw"]].sort_values(["zone", "timestamp_parsed"])
+    per_zone = df.groupby("zone")["timestamp_parsed"].agg(["count", "nunique", "min", "max"])
+    print("Rows per zone (UTC range; a full leap year is 8784 hours):")
+    print(per_zone.to_string())
+
+    df = df[["timestamp_parsed", "timestamp_local", "utc_offset_hours", "timestamp_raw", "zone", "demand_MW", "location_id_raw"]].sort_values(["zone", "timestamp_parsed"])
     args.out_parquet.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(args.out_parquet, index=False)
     print(f"Wrote {len(df)} rows to {args.out_parquet}")
