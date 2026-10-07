@@ -198,7 +198,19 @@ def main() -> None:
     state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
     if "model_state" in state_dict:
         state_dict = state_dict["model_state"]
-    model.load_state_dict(state_dict, strict=True)
+    # The decoder shifter's local_mask/global_mask are buffers computed from
+    # the grid shape, not learned weights. The checkpoint's copies are sized
+    # for the global grid, so keep the ones this model built for the regional
+    # grid and require every other key to load exactly.
+    mask_keys = {k for k in state_dict if k.endswith(("shifter.local_mask", "shifter.global_mask"))}
+    state_dict = {k: v for k, v in state_dict.items() if k not in mask_keys}
+    result = model.load_state_dict(state_dict, strict=False)
+    if set(result.missing_keys) - mask_keys or result.unexpected_keys:
+        raise SystemExit(
+            f"Unexpected weight mismatch. Missing: {sorted(set(result.missing_keys) - mask_keys)}; "
+            f"unexpected: {result.unexpected_keys}"
+        )
+    print(f"Loaded weights from {weights_path} (kept {len(mask_keys)} grid-dependent shifter masks from the regional model)")
     model = model.to(device)
     model.eval()
 
