@@ -32,12 +32,12 @@ source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 WEIGHTS_DIR="${WEIGHTS_DIR:-${SCRATCH_ROOT}/weights/prithvi.wxc.2300m.v1}"
-MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily/surface}"
-MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily/vertical}"
+MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
+MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
 CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${SCRATCH_ROOT}/data/climatology_regional}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_2024.parquet}"
 START="${START:-2024-01-01}"
-END="${END:-2024-12-31}"
+END="${END:-2024-12-31T23:59:59}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 
 python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \

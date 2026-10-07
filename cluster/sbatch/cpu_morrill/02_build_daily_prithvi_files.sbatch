@@ -30,8 +30,8 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 DATA_DIR="${DATA_DIR:-${SCRATCH_ROOT}/data/merra2_2024}"
 VARIABLES_CONFIG="${VARIABLES_CONFIG:-${REPO_ROOT}/configs/merra2_variables.yaml}"
-OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2_2024_daily/surface}"
-OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2_2024_daily/vertical}"
+OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
+OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
 START="${START:-2024-01-01}"
 END="${END:-2024-12-31}"
 

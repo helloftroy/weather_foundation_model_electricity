@@ -28,7 +28,7 @@ mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily/surface}"
+MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/conventional_weather_2024.parquet}"
 
 python "${REPO_ROOT}/src/merra2/extract_conventional_weather.py" \

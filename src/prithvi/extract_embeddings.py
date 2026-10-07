@@ -94,6 +94,20 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
+    # Merra2Dataset.valid_timestamps globs MERRA_pres_*.nc from the SURFACE
+    # path (upstream bug), so both file types must share one directory or it
+    # finds no valid timestamps and dies with a bare StopIteration.
+    if args.merra2_surface_dir.resolve() != args.merra2_vertical_dir.resolve():
+        raise SystemExit(
+            "--merra2-surface-dir and --merra2-vertical-dir must be the same directory: "
+            "Merra2Dataset looks for the vertical files in the surface directory."
+        )
+    n_sfc = len(list(args.merra2_surface_dir.glob("MERRA2_sfc_????????.nc")))
+    n_pres = len(list(args.merra2_surface_dir.glob("MERRA_pres_????????.nc")))
+    print(f"Found {n_sfc} surface and {n_pres} vertical daily files in {args.merra2_surface_dir}")
+    if n_sfc == 0 or n_pres == 0:
+        raise SystemExit("No daily surface and/or vertical files found -- nothing to extract.")
+
     dataset = Merra2Dataset(
         time_range=(args.start, args.end),
         lead_times=[args.lead_time],
