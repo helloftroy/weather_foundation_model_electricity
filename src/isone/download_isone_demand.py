@@ -14,9 +14,10 @@ not to throw away a second reasonable actual-load product if it's cheap to
 also fetch. Real-time hourly demand is the primary "actual load" series;
 day-ahead is kept alongside for comparison, clearly labeled by endpoint.
 
-Zone location IDs are discovered dynamically from the API's /locations
-endpoint rather than hardcoded, since the numeric location IDs are not
-reliably documented and guessing them risks silently pulling the wrong zone.
+Zone location IDs are ISO-NE's fixed load-zone IDs (4001-4008). The script
+prints the names the API reports for them (from /locations/all) so a wrong
+mapping is visible in the log, tests one request before the full run, skips
+files already downloaded, and exits non-zero if nothing was written.
 """
 import argparse
 import csv
@@ -29,16 +30,19 @@ import requests
 
 BASE_URL = "https://webservices.iso-ne.com/api/v1.1"
 
-TARGET_ZONE_NAME_FRAGMENTS = [
-    "MAINE",
-    "NEW HAMPSHIRE",
-    "VERMONT",
-    "CONNECTICUT",
-    "RHODE ISLAND",
-    "NEMA",
-    "SEMA",
-    "WCMA",
-]
+# ISO-NE load zone location IDs. Keys match ZONE_CENTROIDS in
+# src/merra2/extract_conventional_weather.py -- the local join pairs each
+# demand row with "<zone>_<var>" weather columns by this exact name.
+ZONES = {
+    "ME": 4001,
+    "NH": 4002,
+    "VT": 4003,
+    "CT": 4004,
+    "RI": 4005,
+    "SEMA": 4006,
+    "WCMA": 4007,
+    "NEMA": 4008,
+}
 
 ENDPOINTS = {
     "realtime_hourly_demand": "realtimehourlydemand",
@@ -57,28 +61,38 @@ def session_from_env() -> requests.Session:
     return s
 
 
-def discover_zone_locations(session: requests.Session) -> dict:
-    """Return {zone_name: location_id} for the 8 New England load zones."""
-    resp = session.get(f"{BASE_URL}/locations.json")
-    resp.raise_for_status()
-    payload = resp.json()
-    locations = payload.get("Locations", {}).get("Location", [])
+def report_zone_names(session: requests.Session) -> None:
+    """Print what the API calls each of our location IDs. Informational only:
+    a failure here doesn't stop the download."""
+    try:
+        resp = session.get(f"{BASE_URL}/locations/all.json", timeout=60)
+        if resp.status_code != 200:
+            print(f"Could not list locations (HTTP {resp.status_code}); continuing with fixed zone IDs.")
+            return
+        text = resp.text
+        for zone, loc_id in ZONES.items():
+            i = text.find(str(loc_id))
+            snippet = text[max(0, i - 80): i + 80].replace("\n", " ") if i >= 0 else "NOT FOUND in locations list"
+            print(f"  {zone} ({loc_id}): ...{snippet}...")
+    except requests.RequestException as e:
+        print(f"Could not list locations ({e}); continuing with fixed zone IDs.")
 
-    found = {}
-    for loc in locations:
-        name = str(loc.get("LocationName", "")).upper()
-        loc_id = loc.get("LocationId")
-        for fragment in TARGET_ZONE_NAME_FRAGMENTS:
-            if fragment in name and fragment not in found:
-                found[fragment] = loc_id
 
-    missing = set(TARGET_ZONE_NAME_FRAGMENTS) - set(found)
-    if missing:
-        print(f"WARNING: could not auto-match zones: {missing}")
-        print("All locations returned by the API, for manual mapping:")
-        for loc in locations:
-            print(f"  {loc.get('LocationId')}: {loc.get('LocationName')}")
-    return found
+def probe(session: requests.Session, day_str: str) -> None:
+    """One request up front, so bad credentials or a wrong URL fail in
+    seconds with the server's own message instead of after a silent loop."""
+    endpoint = ENDPOINTS["realtime_hourly_demand"]
+    url = f"{BASE_URL}/{endpoint}/day/{day_str}/location/{ZONES['ME']}.json"
+    resp = session.get(url, timeout=60)
+    print(f"Probe {url} -> HTTP {resp.status_code}")
+    print(f"Probe response (first 600 chars): {resp.text[:600]}")
+    if resp.status_code in (401, 403):
+        raise SystemExit(
+            "ISO-NE rejected the credentials. Check ISONE_WS_USERNAME/ISONE_WS_PASSWORD, "
+            "and that the ISO Express account has been approved for web services."
+        )
+    if resp.status_code != 200:
+        raise SystemExit(f"Probe request failed with HTTP {resp.status_code}; not starting the full download.")
 
 
 def daterange(start: date, end: date):
@@ -99,36 +113,63 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     session = session_from_env()
 
-    zones = discover_zone_locations(session)
-    print(f"Resolved zones: {zones}")
-
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
 
+    print("Zone names reported by the API for our location IDs:")
+    report_zone_names(session)
+    probe(session, start.strftime("%Y%m%d"))
+
+    total_files = 0
     for series_name, endpoint in ENDPOINTS.items():
         out_path = args.out_dir / f"isone_{series_name}_{args.start}_{args.end}.csv"
-        rows_written = 0
+        raw_dir = args.out_dir / "raw" / series_name
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        rows = []
+        n_new = n_failed = consecutive_failures = 0
+
+        for zone_name, loc_id in ZONES.items():
+            for day in daterange(start, end):
+                day_str = day.strftime("%Y%m%d")
+                raw_path = raw_dir / f"{zone_name}_{day_str}.json"
+                if raw_path.exists() and raw_path.stat().st_size > 0:
+                    rows.append([zone_name, loc_id, day.isoformat(), str(raw_path)])
+                    continue
+                url = f"{BASE_URL}/{endpoint}/day/{day_str}/location/{loc_id}.json"
+                try:
+                    resp = session.get(url, timeout=60)
+                    ok = resp.status_code == 200
+                    detail = f"HTTP {resp.status_code}"
+                except requests.RequestException as e:
+                    ok, detail = False, str(e)
+                if not ok:
+                    n_failed += 1
+                    consecutive_failures += 1
+                    print(f"  {series_name} {zone_name} {day_str}: {detail}", flush=True)
+                    if consecutive_failures >= 20:
+                        raise SystemExit(
+                            f"20 requests in a row failed (last: {detail}); stopping. "
+                            "Re-run to resume -- completed files are skipped."
+                        )
+                    time.sleep(args.sleep_seconds * 4)
+                    continue
+                consecutive_failures = 0
+                raw_path.write_text(resp.text)
+                rows.append([zone_name, loc_id, day.isoformat(), str(raw_path)])
+                n_new += 1
+                if n_new % 200 == 0:
+                    print(f"  {series_name}: {n_new} new files so far (latest {zone_name} {day_str})", flush=True)
+                time.sleep(args.sleep_seconds)
+
         with out_path.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["zone", "location_id", "date", "raw_json_path"])
-            raw_dir = args.out_dir / "raw" / series_name
-            raw_dir.mkdir(parents=True, exist_ok=True)
+            writer.writerows(rows)
+        total_files += len(rows)
+        print(f"{series_name}: {len(rows)} day-zone files indexed ({n_new} new, {n_failed} failed), index at {out_path}")
 
-            for zone_name, loc_id in zones.items():
-                for day in daterange(start, end):
-                    day_str = day.strftime("%Y%m%d")
-                    url = f"{BASE_URL}/{endpoint}/day/{day_str}/location/{loc_id}.json"
-                    resp = session.get(url)
-                    if resp.status_code != 200:
-                        print(f"  {series_name} {zone_name} {day_str}: HTTP {resp.status_code}")
-                        time.sleep(args.sleep_seconds)
-                        continue
-                    raw_path = raw_dir / f"{zone_name}_{day_str}.json"
-                    raw_path.write_text(resp.text)
-                    writer.writerow([zone_name, loc_id, day.isoformat(), str(raw_path)])
-                    rows_written += 1
-                    time.sleep(args.sleep_seconds)
-        print(f"{series_name}: wrote {rows_written} day-zone raw files, index at {out_path}")
+    if total_files == 0:
+        raise SystemExit("No files were downloaded for any series.")
 
     print(
         "\nRaw per-day JSON kept under out-dir/raw/<series>/. Build the "
