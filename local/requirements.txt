@@ -6,3 +6,4 @@ matplotlib
 xarray
 pyyaml
 h5netcdf
+shapely
