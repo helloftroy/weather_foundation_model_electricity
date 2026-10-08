@@ -3,3 +3,6 @@ pyarrow
 catboost
 scikit-learn
 matplotlib
+xarray
+pyyaml
+h5netcdf
