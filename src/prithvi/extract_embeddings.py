@@ -241,8 +241,20 @@ def main() -> None:
                 if isinstance(v, torch.Tensor):
                     batch[k] = v.to(device)
 
+            # The loader and model have no missing-value handling: one NaN in
+            # the inputs turns every embedding NaN. Stop at the first one.
+            for k, v in batch.items():
+                if isinstance(v, torch.Tensor) and v.is_floating_point() and not torch.isfinite(v).all():
+                    n_bad = int((~torch.isfinite(v)).sum())
+                    raise SystemExit(
+                        f"Non-finite values in model input '{k}' ({n_bad}/{v.numel()}) at "
+                        f"timestamps starting {timestamps[idx]}. Check the daily MERRA-2 files and climatology."
+                    )
+
             model(batch)  # decoder output discarded; we only need the hook capture
             x_encoded = captured["x_encoded"]  # [B, n_global_mu, n_local_mu, embed_dim]
+            if not torch.isfinite(x_encoded).all():
+                raise SystemExit(f"Model produced non-finite embeddings at timestamps starting {timestamps[idx]} despite finite inputs.")
 
             b = x_encoded.shape[0]
             global_out[idx:idx + b] = x_encoded.mean(dim=(1, 2)).cpu().numpy()

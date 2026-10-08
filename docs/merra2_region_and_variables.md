@@ -45,21 +45,33 @@ weights' normalization scalers and channel ordering depend on it exactly.
 Total: 20 + 10*14 = 160 channels, matching the model card's "160 variables"
 claim exactly.
 
-GES DISC collection mapping (standard NASA schema, best-effort -- see
-`configs/merra2_variables.yaml` for per-variable assignment and confidence
-notes): M2T1NXFLX, M2T1NXLND, M2T1NXRAD, M2T1NXSLV (hourly surface),
-M2C0NXASM (static constants), M2I3NVASM (3-hourly instantaneous native
-vertical levels).
+GES DISC collections, matching the repo's own input-preparation code
+(`PrithviWxC/download.py`, `MERRA2_PRODUCTS`):
 
-## Known data-alignment issue (see `src/merra2/build_daily_prithvi_files.py`)
+| Collection | Type | Variables |
+|---|---|---|
+| M2I1NXASM | hourly, instantaneous, on the hour | PS, QV2M, SLP, T2M, TQI, TQL, TQV, TS, U10M, V10M |
+| M2T1NXFLX | hourly, time-averaged, at half past | EFLUX, HFLUX, Z0M |
+| M2T1NXLND | hourly, time-averaged, at half past | GWETROOT, LAI |
+| M2T1NXRAD | hourly, time-averaged, at half past | LWGAB, LWGEM, LWTUP, SWGNT, SWTNT |
+| M2I3NVASM | 3-hourly, instantaneous, 72 model levels | the ten vertical variables |
+| M2C0NXCTM | constants, 12 monthly slices | FRACI, FRLAND, FROCEAN, PHIS |
 
-The tavg1 surface collections (FLX/LND/RAD/SLV) are hourly
-INTERVAL-AVERAGED products timestamped ~30 min off the synoptic hour;
-M2I3NVASM is true instantaneous at 00,03,...,21 UTC. `Merra2Dataset` requires
-an exact timestamp match, so our merge step explicitly resamples surface
-data onto the clean 3-hourly synoptic grid (nearest-neighbor, 90 min
-tolerance) before writing Prithvi-format daily files, rather than fighting
-GES DISC's raw timestamp conventions bit-for-bit.
+## How the daily files are built (`src/merra2/build_daily_prithvi_files.py`)
+
+Follows `extract_prithvi_wxc_input_data` in `PrithviWxC/download.py`:
+
+- Instantaneous collections are sampled at 00, 03, ..., 21 UTC exactly.
+- Time-averaged collections are centred on the hour by averaging the two
+  neighbouring half-hour values (the first day's 00:00 uses 00:30 alone).
+- GWETROOT and LAI are undefined over ocean; they are filled with 1.0 and
+  0.0 (the repo's `NAN_VALS`). Without this every embedding comes out NaN:
+  the first full-year extraction (2026-10-07) was all NaN for this reason.
+- Static fields use the slice for the day's calendar month.
+- Each file is checked for non-finite values before writing.
+
+An earlier version used the time-averaged M2T1NXSLV for the single-level
+variables and nearest-neighbour time matching; both were replaced.
 
 ## Recorded findings (fill in once the full year is downloaded)
 

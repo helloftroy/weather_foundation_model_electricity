@@ -28,3 +28,7 @@ hf_cache/
 *.out
 *.err
 logs/
+
+# Local Python environment and Phase 3 outputs
+.venv/
+results/

@@ -31,24 +31,21 @@ regional crop as long as we hand it files in exactly its expected format:
             'time' as above
         one (time, lev, lat, lon) dataset per vertical_vars short name
 
-Important MERRA-2 gotcha this script works around: the tavg1 surface
-collections (M2T1NXFLX/LND/RAD/SLV) are hourly INTERVAL-AVERAGED products
-timestamped at half-past-the-hour (e.g. 00:30, 01:30, ...), not the exact
-synoptic instants (00:00, 03:00, ...) that the M2I3NVASM vertical collection
-uses. Merra2Dataset looks up an EXACT timestamp match (no tolerance), so
-mixing the two naively would raise "not in list" errors. Instead of matching
-raw GES DISC timestamps bit-for-bit, this script explicitly resamples/
-relabels the surface data onto the clean 3-hourly synoptic grid (nearest
-available hour, default 90 min tolerance) before writing -- introducing the
-tavg1 series' inherent ~30 min lead/lag, which is an accepted simplification
-here, not silently glossed over.
+Processing follows the repo's own input-preparation code
+(PrithviWxC/download.py, extract_prithvi_wxc_input_data):
 
-VERIFY ON CLUSTER before trusting a full year of output:
-  - that the downloaded GES DISC files actually use the variable short names
-    assumed here (should match, since Prithvi's names ARE the standard
-    MERRA-2 short names, but confirm against one real downloaded file);
-  - that the nearest-neighbor reindex tolerance (90 min) doesn't silently
-    drop timestamps if a collection has gaps.
+  - Single-level state variables (PS, T2M, U10M, ...) come from the
+    INSTANTANEOUS collection M2I1NXASM (inst1_2d_asm_Nx), on the hour.
+  - The hourly time-averaged collections (M2T1NXFLX/LND/RAD) are stamped at
+    half past the hour. Each 3-hourly value is the mean of the two averages
+    either side of it (HH-1:30 and HH:30), which centres it on the hour. For
+    00:00 that needs the previous day's 23:30; where that isn't available
+    (the first day downloaded) the 00:30 value is used alone.
+  - GWETROOT and LAI are undefined over ocean in MERRA-2. They are filled
+    with the official NAN_VALS (1.0 and 0.0). The loader and model have no
+    missing-value handling, so a single NaN makes every embedding NaN.
+
+Every output file is checked for non-finite values before it is written.
 """
 import argparse
 from pathlib import Path
@@ -61,6 +58,9 @@ import yaml
 STATIC_COLLECTION = "M2C0NXCTM"
 VERTICAL_COLLECTION = "M2I3NVASM"
 SYNOPTIC_HOURS = [0, 3, 6, 9, 12, 15, 18, 21]
+# From PrithviWxC/definitions.py: fill values for variables that are
+# undefined (NaN) away from land.
+NAN_VALS = {"GWETROOT": 1.0, "LAI": 0.0}
 
 
 def load_variable_config(path: Path) -> dict:
@@ -91,7 +91,7 @@ def open_collection_day(data_dir: Path, collection: str, day: pd.Timestamp) -> x
     if not files:
         return None
     ds = xr.open_mfdataset(files, combine="by_coords", decode_times=True)
-    day_start = day
+    day_start = day - pd.Timedelta(hours=1)  # previous day's 23:30, for centring 00:00
     day_end = day + pd.Timedelta(hours=23, minutes=59)
     if "time" in ds.dims:
         ds = ds.sel(time=slice(day_start, day_end))
@@ -100,9 +100,46 @@ def open_collection_day(data_dir: Path, collection: str, day: pd.Timestamp) -> x
     return ds
 
 
-def resample_to_synoptic(ds: xr.Dataset, day: pd.Timestamp, tolerance_minutes: int = 90) -> xr.Dataset:
-    target_times = [day + pd.Timedelta(hours=h) for h in SYNOPTIC_HOURS]
-    return ds.reindex(time=target_times, method="nearest", tolerance=pd.Timedelta(minutes=tolerance_minutes))
+def resample_to_synoptic(ds: xr.Dataset, day: pd.Timestamp) -> xr.Dataset:
+    """Put a collection on the 3-hourly synoptic grid for `day`.
+
+    Instantaneous collections (stamped on the hour) are selected exactly.
+    Time-averaged collections (stamped at half past) are centred on the hour
+    by averaging the two neighbouring half-hour values.
+    """
+    targets = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for h in SYNOPTIC_HOURS])
+    minutes = pd.DatetimeIndex(ds["time"].values).minute
+    if (minutes == 0).all():
+        return ds.reindex(time=targets)
+    if not (minutes == 30).all():
+        raise SystemExit(f"{day.date()}: unexpected time stamps (minutes {sorted(set(minutes))}); expected :00 or :30.")
+    half = pd.Timedelta(minutes=30)
+    before = ds.reindex(time=targets - half).assign_coords(time=targets)
+    after = ds.reindex(time=targets + half).assign_coords(time=targets)
+    # Where the earlier half-hour is missing altogether (first day), use the
+    # later one alone rather than leaving a gap.
+    has_before = xr.DataArray(
+        np.isin((targets - half).values, ds["time"].values), coords={"time": targets}, dims="time"
+    )
+    return xr.where(has_before, (before + after) / 2, after)
+
+
+def fill_and_check(arrays: dict, label: str) -> dict:
+    """Apply the official NaN fills, then refuse to continue if anything
+    non-finite is left."""
+    out = {}
+    bad = {}
+    for name, arr in arrays.items():
+        arr = np.asarray(arr)
+        if name in NAN_VALS:
+            arr = np.nan_to_num(arr, nan=NAN_VALS[name])
+        n_bad = int((~np.isfinite(arr)).sum())
+        if n_bad:
+            bad[name] = f"{n_bad}/{arr.size}"
+        out[name] = arr
+    if bad:
+        raise SystemExit(f"{label}: non-finite values remain after filling: {bad}")
+    return out
 
 
 def write_surface_file(
@@ -205,12 +242,12 @@ def main() -> None:
     days = pd.date_range(args.start, args.end, freq="D")
     n_written = 0
     for day in days:
-        static_arrays = {
+        static_arrays = fill_and_check({
             # .isel (not raw .values[idx]) to index the "time" dim by label
             # regardless of its actual position among the var's axes.
             var: static_ds[var].isel(time=month_to_time_idx[day.month]).values
             for var in config.get(STATIC_COLLECTION, [])
-        }
+        }, f"{day.date()} static")
 
         surface_arrays = {}
         lat = lon = None
@@ -244,6 +281,9 @@ def main() -> None:
             if var not in vert_ds:
                 raise SystemExit(f"{day.date()}: variable '{var}' not found in {VERTICAL_COLLECTION}")
             vertical_arrays[var] = vert_ds[var].values
+
+        surface_arrays = fill_and_check(surface_arrays, f"{day.date()} surface")
+        vertical_arrays = fill_and_check(vertical_arrays, f"{day.date()} vertical")
 
         write_surface_file(
             args.out_dir_surface / f"MERRA2_sfc_{day.strftime('%Y%m%d')}.nc",
