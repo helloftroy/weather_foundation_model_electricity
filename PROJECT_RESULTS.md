@@ -484,3 +484,42 @@ $23.99 on the chronological split.
 
 Figure: `results/price_dayahead_2024/training_length.png`
 (`local/plot_training_length.py`).
+
+### Blocked split in more detail (2026-10-09)
+
+Same test, early stopping off, on the blocked split only.
+
+Day-ahead price, mean of 3 seeds (seeds agree to within $0.5):
+
+| Trees | Calendar + weather: MAE | R² | + demand: MAE | R² |
+|---|---|---|---|---|
+| 100 | $11.97 | 0.48 | $9.96 | 0.59 |
+| 300 | $12.27 | 0.40 | $9.86 | 0.56 |
+| 1,000 | $12.15 | 0.38 | $9.84 | 0.56 |
+| 3,000 | $12.14 | 0.38 | $9.78 | 0.56 |
+| 10,000 | $12.17 | 0.38 | $9.80 | 0.56 |
+
+Demand, mean zone MAPE, mean of 2 seeds (seeds agree to within 0.3 points):
+
+| Trees | Calendar | Calendar + weather | Vermont, calendar + weather |
+|---|---|---|---|
+| 100 | 14.4% | 9.6% | 26.8% |
+| 300 | 12.5% | 6.3% | 13.6% |
+| 1,000 | 11.4% | 5.6% | 10.6% |
+| 3,000 | 11.1% | 5.5% | 10.1% |
+| 10,000 | 10.8% | 5.5% | 10.1% |
+
+- **Price: more trees do nothing** on this split. Error is flat from about
+  300 trees; R² is slightly higher at 100 trees than later.
+- **Demand: more trees help up to about 1,000, then stop.** The reported
+  calendar + weather result (5.9%) came from a run that early-stopped at
+  388 trees; around 1,000-3,000 trees it is 5.5%. Vermont improves from
+  12.0% to about 10.1% but is still roughly double the other zones.
+- **Calendar-only demand** keeps improving slowly (11.1% at 3,000, 10.8%
+  at 10,000). It is the model that hit the 3,000-tree cap in the reported
+  run.
+- No overfitting on the test hours up to 10,000 trees in any of these.
+- Taken with the chronological result above, early stopping with a
+  100-tree patience has stopped too early in several runs. The headline
+  tables have not been rerun; the plan is to use a fixed 3,000 trees when
+  everything is rerun on the rebuilt data.
