@@ -268,7 +268,8 @@ Day-ahead and real-time correlate only 0.62 hour by hour.
 - **Everything is from the same hour as the price.** These are explanatory
   models, not forecasts: the day-ahead price is really set a day earlier
   from forecasts.
-- **Not given:** natural gas or other fuel prices, past prices, generator
+- **Not given** in these first three feature sets: natural gas or other
+  fuel prices (added later, see the gas section), past prices, generator
   outages, imports, renewable output.
 
 ## Model setup, splits, scoring
@@ -361,5 +362,88 @@ done
 - Prithvi feature sets, once finite embeddings are back.
 - Predicted (not actual) demand as a feature, with out-of-sample
   predictions for the training rows.
-- A natural gas price series, to test the fuel-price explanation.
+- A true daily Algonquin gas series (paid: NGI, Platts) in place of the
+  weekly one. See the gas section below.
 - Day-ahead-appropriate inputs (previous-day information only).
+
+## Adding natural gas prices (2026-10-09)
+
+Tests the explanation above: that winter price spikes follow gas prices.
+
+### The gas data
+
+| Feature | What it is | Source |
+|---|---|---|
+| `gas_algonquin` | Algonquin Citygate spot price, $/MMBtu, the New England benchmark | Extracted from the text of EIA's Natural Gas Weekly Update |
+| `gas_henry_hub` | Henry Hub daily spot price, $/MMBtu, the national benchmark | EIA `RNGWHHDd.xls` |
+
+- **There is no free daily Algonquin series.** EIA's republished hub data
+  stops in 2017; daily data is sold by NGI, Platts and others. EIA's weekly
+  report quotes the Algonquin price for each Wednesday ("from $X last
+  Wednesday to $Y yesterday"). `local/build_gas_prices.py` extracts these:
+  **51 Wednesdays in 2024**, longest gap 14 days (no Dec 25 quote), with no
+  disagreement where two reports quote the same day.
+- **Weekly values are interpolated linearly to daily.** Anything that
+  happened between Wednesdays is missed or smoothed, and each day's value
+  uses the following Wednesday's quote.
+- Henry Hub is a real daily series (251 trading days; weekends and holidays
+  carry the last trading day).
+
+Monthly mean Algonquin price: $6.23 in January, $4.07 in November, $7.67 in
+December, and $1.62–$2.71 in every other month. Henry Hub stayed between
+$1.49 and $4.02. Correlation of daily mean hub electricity price with
+Algonquin is 0.66 (day-ahead); with Henry Hub, 0.36.
+
+### Results with gas (day-ahead)
+
+| Feature set | Chrono MAE | Chrono R² | Blocked MAE | Blocked R² |
+|---|---|---|---|---|
+| Calendar + weather + demand (no gas) | $24.21 | −0.23 | $9.86 | 0.56 |
+| Calendar + weather + gas | $16.93 | 0.33 | $10.98 | 0.37 |
+| Calendar + weather + demand + gas | $16.27 | 0.38 | $9.17 | 0.51 |
+| Calendar + weather + demand + Henry Hub only | $23.26 | −0.13 | $7.52 | 0.74 |
+
+"Gas" means both Algonquin and Henry Hub. Real-time shows the same pattern
+on the chronological split (MAE $25.14 → $18.93, R² −0.24 → 0.22) and gets
+worse on the blocked split (R² 0.53 → 0.13).
+
+Chronological split, day-ahead, by test month:
+
+| Month | Actual mean price | Predicted, no gas | Predicted, with gas | MAE no gas | MAE with gas |
+|---|---|---|---|---|---|
+| October | $36.0 | $31.0 | $27.5 | $9.2 | $8.9 |
+| November | $39.5 | $31.7 | $37.6 | $11.1 | $10.0 |
+| December | $87.9 | $35.8 | $65.0 | $52.2 | $29.8 |
+
+### What this shows
+
+- **Gas explains much of the December miss.** On the chronological split,
+  adding gas moves the December prediction from $36 to $65 against an
+  actual $88, cuts December error from $52 to $30, and takes R² from
+  negative to 0.38. The models now beat the training-mean reference.
+- **It is the regional price that matters.** Henry Hub alone does nothing
+  on the chronological split.
+- **December is still under-predicted by $23**, and cold and high-price
+  hours remain the largest errors (top-10% prices under-predicted by $68,
+  down from $103).
+- **On the blocked split, the weekly gas series does not help overall, and
+  hurts in places.** It fixes January (day-ahead MAE $40.6 → $13.4) but
+  makes late November and late December worse ($5.0 → $12.6 and $34.4 →
+  $48.2). Both are where the weekly series is least reliable: the late-
+  November test days sit on an interpolated ramp from $2.84 to $9.82, and
+  the late-December test days fall in the 14-day gap with no quote. This
+  points at the coarseness of the weekly series, not at gas being
+  irrelevant, but that reading has not been checked against daily data.
+- **Henry Hub's blocked-split result (R² 0.74) should not be read as
+  signal.** It does nothing on the chronological split. On the blocked
+  split a slowly drifting daily series can act as a marker for which week
+  a test day belongs to, next to training days from the same weeks.
+- With one year and one run per model, differences of a few points of R²
+  between feature sets on the blocked split are not reliable.
+
+### Gas: how to reproduce
+
+```bash
+.venv/bin/python local/build_gas_prices.py --out-csv data/gas/gas_prices_daily_2024.csv
+# then pass --gas-csv data/gas/gas_prices_daily_2024.csv to prepare_price_table.py
+```

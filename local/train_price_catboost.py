@@ -15,12 +15,19 @@ Feature sets:
     calendar+weather+demand   + ACTUAL system demand for the same hour. An
                               upper bound on what a demand prediction could
                               contribute, not a usable forecast input.
+    calendar+weather+gas      + natural gas prices: Algonquin Citygate
+    calendar+weather+demand+gas   (weekly quotes interpolated to daily) and
+                              Henry Hub daily. Added when the price table
+                              has gas columns (see build_gas_prices.py).
+    calendar+weather+demand+henryhub   Henry Hub only, to show whether the
+                              national gas price is enough.
 Prithvi feature sets are added automatically when global_emb_* columns are
 present.
 
 These are explanatory models: every input is from the same hour as the
 price. Day-ahead prices are actually set the previous day from forecasts,
-and no fuel-price or past-price information is included.
+and no past-price information is included. The Algonquin gas series is
+interpolated between weekly quotes, which uses the following week's value.
 
 Scored in $/MWh (MAE and median absolute error) and R2. Percentage error is
 not used: prices come close to zero and real-time prices go negative.
@@ -38,6 +45,7 @@ from train_catboost_comparisons import WEATHER_FEATURES, assign_split
 
 CALENDAR_FEATURES = [f for f in ZONE_CALENDAR_FEATURES if f != "zone"]
 DEMAND_FEATURES = ["system_demand_MW"]
+GAS_FEATURES = ["gas_algonquin", "gas_henry_hub"]
 TARGET = "lmp_total"
 
 
@@ -48,6 +56,10 @@ def build_feature_sets(df: pd.DataFrame) -> dict[str, list[str]]:
         "calendar+weather": CALENDAR_FEATURES + WEATHER_FEATURES,
         "calendar+weather+demand": CALENDAR_FEATURES + WEATHER_FEATURES + DEMAND_FEATURES,
     }
+    if all(c in df.columns for c in GAS_FEATURES):
+        sets["calendar+weather+gas"] = CALENDAR_FEATURES + WEATHER_FEATURES + GAS_FEATURES
+        sets["calendar+weather+demand+gas"] = CALENDAR_FEATURES + WEATHER_FEATURES + DEMAND_FEATURES + GAS_FEATURES
+        sets["calendar+weather+demand+henryhub"] = CALENDAR_FEATURES + WEATHER_FEATURES + DEMAND_FEATURES + ["gas_henry_hub"]
     if prithvi:
         sets["calendar+prithvi"] = CALENDAR_FEATURES + prithvi
         sets["calendar+weather+prithvi"] = CALENDAR_FEATURES + WEATHER_FEATURES + prithvi

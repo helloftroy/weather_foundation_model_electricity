@@ -15,6 +15,9 @@ Output columns per hour:
                           weights equal to each zone's share of annual demand
     calendar features     from Eastern local time
     global_emb_*          Prithvi embedding, if present in the modeling table
+    gas_algonquin,        daily natural gas prices ($/MMBtu) from
+    gas_henry_hub         build_gas_prices.py, if --gas-csv is given, joined
+                          on the Eastern local date
 """
 import argparse
 from pathlib import Path
@@ -31,6 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lmp-parquet", type=Path, required=True)
     parser.add_argument("--modeling-table", type=Path, required=True)
+    parser.add_argument("--gas-csv", type=Path, help="Daily gas prices from build_gas_prices.py (optional)")
     parser.add_argument("--out-parquet", type=Path, required=True)
     args = parser.parse_args()
 
@@ -62,6 +66,14 @@ def main() -> None:
         out = out.join(g[emb_cols].first())
     out = out.join(hub, how="left").reset_index()
     out["price_series"] = series[0]
+
+    if args.gas_csv:
+        gas = pd.read_csv(args.gas_csv, parse_dates=["date"]).rename(columns={"algonquin_weekly": "gas_algonquin", "henry_hub": "gas_henry_hub"})
+        out["date"] = out["timestamp_local"].dt.normalize()
+        out = out.merge(gas[["date", "gas_algonquin", "gas_henry_hub"]], on="date", how="left").drop(columns="date")
+        print(f"Gas prices joined; {int(out['gas_algonquin'].isna().sum())} hours without one. "
+              f"Daily correlation with the hub price: Algonquin {out.groupby(out['timestamp_local'].dt.date)[['lmp_total', 'gas_algonquin']].mean().corr().iloc[0, 1]:.2f}, "
+              f"Henry Hub {out.groupby(out['timestamp_local'].dt.date)[['lmp_total', 'gas_henry_hub']].mean().corr().iloc[0, 1]:.2f}")
 
     print(f"{len(out)} hours; {int(out['lmp_total'].isna().sum())} without a price, {int(out['weather_T2M'].isna().sum())} without weather.")
     print(out["lmp_total"].describe(percentiles=[0.01, 0.5, 0.9, 0.99]).round(2).to_string())
