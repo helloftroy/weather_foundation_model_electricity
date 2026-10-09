@@ -1,18 +1,20 @@
-"""Price models: how much of the hourly ISO-NE price do calendar, weather,
-and demand explain?
+"""Price models: how much of the hourly ISO-NE hub price do calendar,
+weather, and demand explain?
 
-Target: lmp_total ($/MWh) for one price series (day-ahead or real-time),
-for the eight load zones. One pooled CatBoost model per feature set, same
-settings and the same two splits as the demand models
-(train_catboost_comparisons.py).
+Target: the hub lmp_total ($/MWh), one row per hour, for one price series
+(day-ahead or real-time). The hub is used instead of the eight zones
+because zonal prices are nearly identical to it (see prepare_price_table.py).
+One CatBoost model per feature set, with the same settings and the same two
+splits as the demand models (train_catboost_comparisons.py).
 
 Feature sets:
-    calendar
-    calendar+weather
-    calendar+weather+demand   adds the zone's ACTUAL demand and the system
-                              total for the same hour. An upper bound on
-                              what a demand prediction could contribute,
-                              not a usable forecast input.
+    calendar                  hour, day_of_week, day_of_year, month,
+                              is_weekend, is_holiday
+    calendar+weather          + demand-weighted regional T2M, QV2M, wind
+                              speed, U10M, V10M, SWGNT
+    calendar+weather+demand   + ACTUAL system demand for the same hour. An
+                              upper bound on what a demand prediction could
+                              contribute, not a usable forecast input.
 Prithvi feature sets are added automatically when global_emb_* columns are
 present.
 
@@ -21,7 +23,7 @@ price. Day-ahead prices are actually set the previous day from forecasts,
 and no fuel-price or past-price information is included.
 
 Scored in $/MWh (MAE and median absolute error) and R2. Percentage error is
-not used: prices come close to zero and can be negative.
+not used: prices come close to zero and real-time prices go negative.
 """
 import argparse
 from pathlib import Path
@@ -31,9 +33,11 @@ import pandas as pd
 from catboost import CatBoostRegressor, Pool
 from sklearn.metrics import r2_score
 
-from train_catboost_comparisons import CALENDAR_FEATURES, CAT_FEATURES, WEATHER_FEATURES, assign_split
+from train_catboost_comparisons import CALENDAR_FEATURES as ZONE_CALENDAR_FEATURES
+from train_catboost_comparisons import WEATHER_FEATURES, assign_split
 
-DEMAND_FEATURES = ["demand_MW", "system_demand_MW"]
+CALENDAR_FEATURES = [f for f in ZONE_CALENDAR_FEATURES if f != "zone"]
+DEMAND_FEATURES = ["system_demand_MW"]
 TARGET = "lmp_total"
 
 
@@ -74,14 +78,19 @@ def main() -> None:
     print(f"{series}: {len(df)} rows, feature sets: {list(feature_sets)}")
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    overall, by_zone, by_condition, pred_frames = [], [], [], []
+    overall, by_condition, pred_frames = [], [], []
     for scheme in args.splits:
         split = assign_split(df, scheme)
         tr, va, te = df[split == "train"], df[split == "val"], df[split == "test"]
-        print(f"\n[{scheme}] train {len(tr)}  val {len(va)}  test {len(te)} rows; test price mean {te[TARGET].mean():.1f}, sd {te[TARGET].std():.1f} $/MWh")
-        preds = te[["timestamp", "timestamp_local", "zone", TARGET, "demand_MW", "weather_T2M"]].copy()
+        print(f"\n[{scheme}] train {len(tr)}  val {len(va)}  test {len(te)} hours; price mean train {tr[TARGET].mean():.1f}, test {te[TARGET].mean():.1f} (sd {te[TARGET].std():.1f}) $/MWh")
+        preds = te[["timestamp", "timestamp_local", TARGET, "system_demand_MW", "weather_T2M"]].copy()
         preds["split_scheme"] = scheme
         y = te[TARGET].to_numpy()
+        price_rank = te[TARGET].rank(pct=True).to_numpy()
+        temp_rank = te["weather_T2M"].rank(pct=True).to_numpy()
+        # Reference point: always predicting the training-period mean price.
+        overall.append({"split_scheme": scheme, "feature_set": "(training mean price)", "n_features": 0, "trees_used": 0,
+                        **metrics(y, np.full(len(y), tr[TARGET].mean()))})
 
         for name, features in feature_sets.items():
             model = CatBoostRegressor(
@@ -89,24 +98,16 @@ def main() -> None:
                 loss_function="RMSE", verbose=False, early_stopping_rounds=100, thread_count=-1,
                 train_dir=str(args.out_dir / "catboost_info"),
             )
-            model.fit(Pool(tr[features], tr[TARGET], cat_features=CAT_FEATURES),
-                      eval_set=Pool(va[features], va[TARGET], cat_features=CAT_FEATURES), use_best_model=True)
+            model.fit(Pool(tr[features], tr[TARGET]), eval_set=Pool(va[features], va[TARGET]), use_best_model=True)
             pred = model.predict(te[features])
             preds[f"pred_{name}"] = pred
-
-            zone_rows = [{"split_scheme": scheme, "feature_set": name, "zone": z, **metrics(y[(te["zone"] == z).to_numpy()], pred[(te["zone"] == z).to_numpy()])}
-                         for z in sorted(te["zone"].unique())]
-            by_zone.extend(zone_rows)
-            zdf = pd.DataFrame(zone_rows)
-            row = {"split_scheme": scheme, "feature_set": name, "n_features": len(features), "trees_used": model.get_best_iteration() + 1,
-                   "mean_zone_r2": zdf["r2"].mean(), "mean_zone_mae": zdf["mae"].mean(), "mean_zone_median_abs_err": zdf["median_abs_err"].mean()}
+            row = {"split_scheme": scheme, "feature_set": name, "n_features": len(features),
+                   "trees_used": model.get_best_iteration() + 1, **metrics(y, pred)}
             overall.append(row)
-            print(f"  {name:26s} mean zone R2 {row['mean_zone_r2']:.3f}   MAE {row['mean_zone_mae']:.2f}   median abs err {row['mean_zone_median_abs_err']:.2f} $/MWh   ({row['trees_used']} trees)")
+            print(f"  {name:26s} R2 {row['r2']:.3f}   MAE {row['mae']:.2f}   median abs err {row['median_abs_err']:.2f}   bias {row['bias']:+.2f} $/MWh   ({row['trees_used']} trees)")
 
-            price_rank = te.groupby("zone")[TARGET].rank(pct=True).to_numpy()
-            temp_rank = te.groupby("zone")["weather_T2M"].rank(pct=True).to_numpy()
-            for label, m in [("high price (top 10% per zone)", price_rank >= 0.9), ("ordinary price (middle 80%)", (price_rank > 0.1) & (price_rank < 0.9)),
-                             ("hot (top 10% T2M per zone)", temp_rank >= 0.9), ("cold (bottom 10% T2M per zone)", temp_rank <= 0.1)]:
+            for label, m in [("high price (top 10%)", price_rank >= 0.9), ("ordinary price (middle 80%)", (price_rank > 0.1) & (price_rank < 0.9)),
+                             ("hot (top 10% T2M)", temp_rank >= 0.9), ("cold (bottom 10% T2M)", temp_rank <= 0.1)]:
                 by_condition.append({"split_scheme": scheme, "feature_set": name, "condition": label, **metrics(y[m], pred[m])})
 
             pd.DataFrame({"feature": features, "importance": model.get_feature_importance()}).sort_values("importance", ascending=False).to_csv(
@@ -114,7 +115,6 @@ def main() -> None:
         pred_frames.append(preds)
 
     pd.DataFrame(overall).to_csv(args.out_dir / "comparison_summary.csv", index=False)
-    pd.DataFrame(by_zone).to_csv(args.out_dir / "comparison_by_zone.csv", index=False)
     pd.DataFrame(by_condition).to_csv(args.out_dir / "comparison_by_condition.csv", index=False)
     pd.concat(pred_frames, ignore_index=True).to_parquet(args.out_dir / "test_predictions.parquet", index=False)
     print(f"\nWrote results to {args.out_dir}")

@@ -1,9 +1,9 @@
-# Project Results: Weather Foundation Model → Electricity Demand
+# Project Results: Weather Foundation Model → Electricity Demand and Price
 
 Running record of what has been tested, exactly how, and what came out.
 Setup and cluster commands live in `PROJECT_NOTES.md`.
 
-Last updated: 2026-10-07
+Last updated: 2026-10-09
 
 ## Status
 
@@ -18,6 +18,9 @@ Last updated: 2026-10-07
 MERRA-2 daily files are rebuilt (see "Known issues").
 
 Nothing here says anything yet about whether Prithvi helps.
+
+Everything down to the divider is the **demand** models. The **price** models, added
+2026-10-09, are in their own section at the end.
 
 ## The question
 
@@ -217,4 +220,146 @@ Outputs (not in git): `comparison_summary.csv`, `comparison_by_zone.csv`,
 - Observed-vs-predicted plots.
 - Repeated seeds for error bars.
 - Reduced-dimension Prithvi embedding; per-region embeddings.
-- Electricity price (later phase; no price data used yet).
+- Demand models: per-zone models; Vermont's midday over-prediction.
+
+---
+
+# Price models (first pass, 2026-10-09)
+
+Separate from everything above. No Prithvi features yet.
+
+## What is being predicted
+
+- **Target:** the hourly price at the ISO-NE internal **hub**, total LMP in
+  **$/MWh**. Two versions, modelled separately:
+  - **Day-ahead** (`hourlylmp/da/final`): set the previous day.
+  - **Real-time** (`hourlylmp/rt/final`): settled from actual conditions.
+- **Why the hub and not the eight zones:** zonal prices are almost one
+  series. In 2024 every zone's day-ahead price correlates 0.995 or higher
+  with the hub and differs from it by $0.64/MWh on average. Modelling eight
+  zones would be eight copies of the same target.
+- **Period and rows:** 2024 in Eastern local time, one row per hour, 8,778
+  hours used (6 late-Dec-31 hours have no weather).
+
+2024 hub prices, for scale:
+
+| | Mean | Median | 1st–99th percentile | Max | Negative hours |
+|---|---|---|---|---|---|
+| Day-ahead | $41.47 | $32.42 | $16–$170 | $327 | 0 |
+| Real-time | $39.50 | $30.05 | $10–$168 | $2,113 | 29 |
+
+Prices are strongly seasonal and spiky: the day-ahead monthly mean was $70
+in January and $88 in December, against $24–$46 in every other month.
+Day-ahead and real-time correlate only 0.62 hour by hour.
+
+## What the models are given
+
+| Feature set | Features |
+|---|---|
+| Calendar | hour, day_of_week, day_of_year, month, is_weekend, is_holiday |
+| Calendar + weather | + regional T2M, QV2M, wind speed, U10M, V10M, SWGNT |
+| Calendar + weather + demand | + actual system demand (eight zones summed) for the same hour |
+
+- **Regional weather** is the eight zones' weather averaged with fixed
+  weights equal to each zone's share of annual demand.
+- **Demand is actual demand, not predicted.** That feature set is an upper
+  bound on what a demand prediction could add. It is not a usable forecast
+  input.
+- **Everything is from the same hour as the price.** These are explanatory
+  models, not forecasts: the day-ahead price is really set a day earlier
+  from forecasts.
+- **Not given:** natural gas or other fuel prices, past prices, generator
+  outages, imports, renewable output.
+
+## Model setup, splits, scoring
+
+- CatBoost with the same settings as the demand models (RMSE loss, depth 6,
+  learning rate 0.05, up to 3,000 trees, early stopping on the validation
+  block, seed 7, no tuning, one run).
+- The same two splits: chronological (train Jan–Aug, validate Sep, test
+  Oct–Dec; 5,855 / 720 / 2,203 hours) and blocked (days 1–18 / 19–21 / 22
+  onward of each month; 5,184 / 864 / 2,730 hours).
+- **Scored in $/MWh**: mean absolute error (MAE), median absolute error,
+  bias (mean of predicted − actual), and R². No percentage error, because
+  prices approach zero and real-time prices go negative.
+- **Reference:** always predicting the training-period mean price.
+
+## Results
+
+### Blocked split
+
+| Feature set | Day-ahead MAE | median | R² | Real-time MAE | median | R² |
+|---|---|---|---|---|---|---|
+| Training mean price | $17.35 | $12.60 | 0.00 | $17.64 | $13.99 | −0.01 |
+| Calendar | $19.37 | $6.14 | −0.52 | $16.91 | $9.34 | 0.06 |
+| Calendar + weather | $12.11 | $4.54 | 0.39 | $14.21 | $8.78 | 0.33 |
+| Calendar + weather + demand | $9.86 | $3.57 | 0.56 | $11.70 | $8.11 | 0.53 |
+
+### Chronological split
+
+| Feature set | Day-ahead MAE | bias | R² | Real-time MAE | bias | R² |
+|---|---|---|---|---|---|---|
+| Training mean price | $23.99 | −$16.83 | −0.23 | $25.44 | −$17.97 | −0.23 |
+| Calendar | $24.71 | −$22.98 | −0.37 | $24.79 | −$19.49 | −0.24 |
+| Calendar + weather | $24.85 | −$23.98 | −0.27 | $25.43 | −$21.53 | −0.29 |
+| Calendar + weather + demand | $24.21 | −$21.70 | −0.23 | $25.14 | −$21.28 | −0.24 |
+
+### Day-ahead, blocked split, by condition (MAE, with bias in brackets)
+
+| Condition | Calendar | + weather | + weather + demand |
+|---|---|---|---|
+| Ordinary price (middle 80%) | $16.0 (+12.0) | $9.4 (+5.6) | $7.1 (+3.8) |
+| High price (top 10%) | $60.8 (−29.6) | $42.3 (−18.6) | $38.6 (−19.3) |
+| Hot (top 10% T2M) | $27.6 (+22.9) | $9.9 (+5.7) | $6.4 (+2.8) |
+| Cold (bottom 10% T2M) | $53.4 (−22.3) | $40.7 (−5.9) | $35.6 (−9.8) |
+
+### What these show
+
+- **On the chronological split nothing works.** No feature set beats
+  predicting the training mean. The test period contains December, when the
+  day-ahead price averaged $88; the best model predicted $36 for that
+  month. October and November are under-predicted by $5–$8.
+- **On the blocked split, weather and demand both help.** For day-ahead,
+  weather takes R² from below zero to 0.39 and actual demand to 0.56.
+- **The typical hour is predicted far better than the average suggests.**
+  Day-ahead median error with weather and demand is $3.57 against a mean of
+  $9.86. Unlike the demand models, the mean here is driven by a minority of
+  expensive hours: the top 10% of prices are under-predicted by about $19
+  with a $39 mean error.
+- **Cold hours are the hard case**, hot hours are not. Winter price spikes
+  in New England follow natural gas prices, which no model here sees. That
+  is the most likely reason for both the December failure and the cold-hour
+  errors, but it has not been tested with fuel-price data.
+- **Real-time is harder than day-ahead** in the typical hour (median error
+  $8 against $3.57), as expected for the noisier series.
+
+## Price-specific limitations
+
+- One year: a single January and a single December carry all the
+  information about winter price spikes, and the chronological split puts
+  December entirely in the test set.
+- 8,778 hourly rows, a tenth of the demand table.
+- RMSE loss on a spiky target. A log or robust loss was not tried.
+- Actual demand as a feature, same-hour inputs, no fuel prices (see above).
+
+## How to reproduce (price)
+
+```bash
+for s in dayahead realtime; do
+  .venv/bin/python local/prepare_price_table.py \
+    --lmp-parquet data/compact/isone_${s}_hourly_lmp_2024.parquet \
+    --modeling-table data/modeling_table_2024.parquet \
+    --out-parquet data/price_table_${s}_2024.parquet
+  .venv/bin/python local/train_price_catboost.py \
+    --price-table data/price_table_${s}_2024.parquet \
+    --out-dir results/price_${s}_2024
+done
+```
+
+## Price: still to do
+
+- Prithvi feature sets, once finite embeddings are back.
+- Predicted (not actual) demand as a feature, with out-of-sample
+  predictions for the training rows.
+- A natural gas price series, to test the fuel-price explanation.
+- Day-ahead-appropriate inputs (previous-day information only).
