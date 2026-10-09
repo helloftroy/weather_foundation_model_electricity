@@ -4,10 +4,14 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=48:00:00
-#SBATCH --output=logs/isone_demand_2024_%j.out
-#SBATCH --error=logs/isone_demand_2024_%j.err
+#SBATCH --output=logs/isone_demand_%j.out
+#SBATCH --error=logs/isone_demand_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -27,14 +31,14 @@ export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 # NEW_PROJECT_MORRILL_CONTEXT.md).
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${SCRATCH_ROOT}/xdg_cache}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRATCH_ROOT}/mpl_cache}"
-mkdir -p logs "${SCRATCH_ROOT}/data/isone_2024" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
+mkdir -p logs "${SCRATCH_ROOT}/data/isone_${YEAR}" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 python "${REPO_ROOT}/src/isone/download_isone_demand.py" \
-  --start "${START:-2024-01-01}" \
-  --end "${END:-2024-12-31}" \
-  --out-dir "${SCRATCH_ROOT}/data/isone_2024"
+  --start "${START:-${YEAR}-01-01}" \
+  --end "${END:-${YEAR}-12-31}" \
+  --out-dir "${SCRATCH_ROOT}/data/isone_${YEAR}"
 
 echo "Job finished: $(date)"

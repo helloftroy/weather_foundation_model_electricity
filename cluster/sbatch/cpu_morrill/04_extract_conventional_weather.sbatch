@@ -8,6 +8,10 @@
 #SBATCH --error=logs/extract_conventional_weather_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -28,8 +32,8 @@ mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
-OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/conventional_weather_2024.parquet}"
+MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
+OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/conventional_weather_${YEAR}.parquet}"
 
 python "${REPO_ROOT}/src/merra2/extract_conventional_weather.py" \
   --merra2-surface-dir "${MERRA2_SURFACE_DIR}" \

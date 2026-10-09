@@ -8,6 +8,10 @@
 #SBATCH --error=logs/build_daily_prithvi_files_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -28,12 +32,12 @@ mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-DATA_DIR="${DATA_DIR:-${SCRATCH_ROOT}/data/merra2_2024}"
+DATA_DIR="${DATA_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}}"
 VARIABLES_CONFIG="${VARIABLES_CONFIG:-${REPO_ROOT}/configs/merra2_variables.yaml}"
-OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
-OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2_2024_daily}"
-START="${START:-2024-01-01}"
-END="${END:-2024-12-31}"
+OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
+OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
+START="${START:-${YEAR}-01-01}"
+END="${END:-${YEAR}-12-31}"
 
 python "${REPO_ROOT}/src/merra2/build_daily_prithvi_files.py" \
   --data-dir "${DATA_DIR}" \

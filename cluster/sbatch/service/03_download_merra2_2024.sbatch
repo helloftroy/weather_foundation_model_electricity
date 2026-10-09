@@ -4,10 +4,14 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=48:00:00
-#SBATCH --output=logs/merra2_2024_%j.out
-#SBATCH --error=logs/merra2_2024_%j.err
+#SBATCH --output=logs/merra2_%j.out
+#SBATCH --error=logs/merra2_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -26,13 +30,13 @@ export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 # NEW_PROJECT_MORRILL_CONTEXT.md).
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${SCRATCH_ROOT}/xdg_cache}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRATCH_ROOT}/mpl_cache}"
-mkdir -p logs "${SCRATCH_ROOT}/data/merra2_2024" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
+mkdir -p logs "${SCRATCH_ROOT}/data/merra2_${YEAR}" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-START="${START:-2024-01-01}"
-END="${END:-2024-12-31}"
+START="${START:-${YEAR}-01-01}"
+END="${END:-${YEAR}-12-31}"
 LAT_MIN="${LAT_MIN:-30.0}"
 LAT_MAX="${LAT_MAX:-59.5}"
 LON_MIN="${LON_MIN:--90.0}"
@@ -44,6 +48,6 @@ python "${REPO_ROOT}/src/merra2/download_merra2.py" \
   --start "${START}" --end "${END}" \
   --lat-min "${LAT_MIN}" --lat-max "${LAT_MAX}" \
   --lon-min "${LON_MIN}" --lon-max "${LON_MAX}" \
-  --out-dir "${SCRATCH_ROOT}/data/merra2_2024"
+  --out-dir "${SCRATCH_ROOT}/data/merra2_${YEAR}"
 
 echo "Job finished: $(date)"

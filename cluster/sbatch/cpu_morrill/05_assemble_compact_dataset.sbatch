@@ -8,6 +8,10 @@
 #SBATCH --error=logs/assemble_compact_dataset_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -31,21 +35,21 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 # Step 1: parse raw ISO-NE JSON into a clean table (both series, kept
 # separate -- real-time is the primary "actual load" series used downstream).
 python "${REPO_ROOT}/src/isone/parse_isone_demand.py" \
-  --isone-dir "${SCRATCH_ROOT}/data/isone_2024" \
+  --isone-dir "${SCRATCH_ROOT}/data/isone_${YEAR}" \
   --series realtime_hourly_demand \
-  --out-parquet "${SCRATCH_ROOT}/data/compact/isone_realtime_demand_2024.parquet"
+  --out-parquet "${SCRATCH_ROOT}/data/compact/isone_realtime_demand_${YEAR}.parquet"
 
 python "${REPO_ROOT}/src/isone/parse_isone_demand.py" \
-  --isone-dir "${SCRATCH_ROOT}/data/isone_2024" \
+  --isone-dir "${SCRATCH_ROOT}/data/isone_${YEAR}" \
   --series dayahead_hourly_demand \
-  --out-parquet "${SCRATCH_ROOT}/data/compact/isone_dayahead_demand_2024.parquet"
+  --out-parquet "${SCRATCH_ROOT}/data/compact/isone_dayahead_demand_${YEAR}.parquet"
 
 # Step 2: join embeddings + conventional weather + real-time demand.
 python "${REPO_ROOT}/src/assemble_compact_dataset.py" \
-  --embeddings-parquet "${SCRATCH_ROOT}/data/compact/prithvi_embeddings_2024.parquet" \
-  --conventional-weather-parquet "${SCRATCH_ROOT}/data/compact/conventional_weather_2024.parquet" \
-  --isone-demand-parquet "${SCRATCH_ROOT}/data/compact/isone_realtime_demand_2024.parquet" \
-  --out-parquet "${SCRATCH_ROOT}/data/compact/modeling_input_2024.parquet"
+  --embeddings-parquet "${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}.parquet" \
+  --conventional-weather-parquet "${SCRATCH_ROOT}/data/compact/conventional_weather_${YEAR}.parquet" \
+  --isone-demand-parquet "${SCRATCH_ROOT}/data/compact/isone_realtime_demand_${YEAR}.parquet" \
+  --out-parquet "${SCRATCH_ROOT}/data/compact/modeling_input_${YEAR}.parquet"
 
 echo "Job finished: $(date)"
 echo "Transfer ${SCRATCH_ROOT}/data/compact/ to your local machine, e.g.:"

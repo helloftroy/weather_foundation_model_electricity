@@ -447,3 +447,40 @@ Chronological split, day-ahead, by test month:
 .venv/bin/python local/build_gas_prices.py --out-csv data/gas/gas_prices_daily_2024.csv
 # then pass --gas-csv data/gas/gas_prices_daily_2024.csv to prepare_price_table.py
 ```
+
+## Does training longer help? (2026-10-09)
+
+Tested on the stripped-down day-ahead price model (calendar + weather +
+actual demand, **no gas prices**), with early stopping switched off and the
+error measured after every tree up to 10,000. Three seeds on the
+chronological split; means shown.
+
+| Trees | Chrono MAE | Chrono R² | December predicted (actual $87.9) | Blocked MAE |
+|---|---|---|---|---|
+| 20 (where the original run stopped) | $24.40 | −0.25 | $35.4 | n/a |
+| 300 | $24.51 | −0.18 | $36.5 | $9.85 |
+| 1,500 | $22.15 | −0.03 | $40.5 | $9.80 |
+| 3,000 | $21.14 | 0.04 | $42.8 | $9.74 |
+| 10,000 | $20.00 | 0.12 | $45.4 | $9.75 |
+
+Blocked column is a single seed. Guessing the training average scores
+$23.99 on the chronological split.
+
+- **Longer training helps a little on the chronological split and not at
+  all on the blocked split.** From 20 to 10,000 trees the chronological
+  error falls from $24.4 to $20.0. The three seeds agree to within $0.4.
+- **It does not close the gap.** December is still predicted at $45
+  against $88, and the top 10% of prices are still under-predicted by $88.
+  The improvement is slowing: the last 7,000 trees bought $1.1.
+- **No overfitting on the test hours** was seen up to 10,000 trees, even
+  though training error falls to $0.45.
+- **The original early stopping was too impatient here.** It stopped at 18
+  trees because the September validation block gave a flat, noisy signal.
+  A fixed 3,000 trees would have been a better default for this split. The
+  results tables above have NOT been rerun with that change.
+- The missing information is not something more trees can supply: Jan-Aug
+  2024 contains one cold-season price spike (January). More winters in the
+  training data is the direct fix, which is the reason for adding years.
+
+Figure: `results/price_dayahead_2024/training_length.png`
+(`local/plot_training_length.py`).

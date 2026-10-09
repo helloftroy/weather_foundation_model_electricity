@@ -8,6 +8,10 @@
 #SBATCH --error=logs/parse_isone_lmp_%j.err
 
 set -euo pipefail
+
+# Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
+YEAR="${YEAR:-2024}"
+echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 
@@ -33,9 +37,9 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 # reads are only written when each series completes.
 for SERIES in dayahead_hourly_lmp realtime_hourly_lmp; do
   python "${REPO_ROOT}/src/isone/parse_isone_lmp.py" \
-    --lmp-dir "${SCRATCH_ROOT}/data/isone_lmp_2024" \
+    --lmp-dir "${SCRATCH_ROOT}/data/isone_lmp_${YEAR}" \
     --series "${SERIES}" \
-    --out-parquet "${SCRATCH_ROOT}/data/compact/isone_${SERIES}_2024.parquet"
+    --out-parquet "${SCRATCH_ROOT}/data/compact/isone_${SERIES}_${YEAR}.parquet"
 done
 
 echo "Job finished: $(date)"
