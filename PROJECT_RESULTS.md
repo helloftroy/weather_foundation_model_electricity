@@ -194,6 +194,15 @@ need to choose.
   input-preparation code: `GWETROOT` and `LAI` are undefined over ocean and
   were not filled. Fixed in `src/merra2/build_daily_prithvi_files.py`; not
   yet confirmed on real data.
+- **Second embedding table unusable (2026-10-10).** Values were finite but
+  in the hundreds of millions, and five directions carried essentially all
+  the variation across the year. Cause: the daily files stored the vertical
+  levels in MERRA-2's native ascending order, while the loader assumes
+  descending and flips them, so every vertical profile reached the model
+  upside down. Fixed in `build_daily_prithvi_files.py` and checked against
+  the loader's own level logic on synthetic files; extraction now also
+  prints how many standard deviations each input sits from the model's
+  training mean and stops if any is far out. Not yet confirmed on real data.
 - **Weather features are provisional.** The same fix switches the
   single-level variables (including T2M) from hourly averages to
   instantaneous values, so the baseline numbers above will move slightly

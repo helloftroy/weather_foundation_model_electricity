@@ -76,6 +76,34 @@ def region_centers(lat_min: float, lon_min: float, mask_unit_size_px, n_global_l
     return centers
 
 
+def check_normalised_inputs(x: torch.Tensor, model, n_levels: int) -> None:
+    """Print how far the inputs sit from the model's own normalisation
+    statistics, and stop if they are wildly off.
+
+    Correctly prepared inputs are within a few standard deviations of the
+    training mean. Finite but mis-assigned data (wrong units, wrong level
+    order, wrong variable) shows up here as values tens to thousands of
+    standard deviations out -- the first 2024 run had vertical profiles
+    stored upside down and produced embeddings in the hundreds of millions.
+    """
+    z = (x - model.input_scalers_mu) / (model.input_scalers_sigma + model.input_scalers_epsilon)
+    mean_abs = z.abs().mean(dim=(0, 1, 3, 4)).cpu().numpy()  # one value per channel
+    names = list(SURFACE_VARS) + [f"{v}@{int(l)}" for v in VERTICAL_VARS for l in LEVELS]
+    print("Normalised input check (mean |z| per variable; a few at most is expected):")
+    for i, v in enumerate(SURFACE_VARS):
+        print(f"  {v:9s} {mean_abs[i]:8.2f}")
+    for j, v in enumerate(VERTICAL_VARS):
+        block = mean_abs[len(SURFACE_VARS) + j * n_levels: len(SURFACE_VARS) + (j + 1) * n_levels]
+        print(f"  {v:9s} " + " ".join(f"{b:7.2f}" for b in block) + f"   (levels {int(LEVELS[0])}..{int(LEVELS[-1])})")
+    worst = int(mean_abs.argmax())
+    if mean_abs[worst] > 20:
+        raise SystemExit(
+            f"Input '{names[worst]}' is on average {mean_abs[worst]:.0f} standard deviations from the model's "
+            "training mean. The data is finite but not what the model expects (check units, level order, "
+            "and variable mapping in the daily files). Stopping before extracting embeddings."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights-dir", type=Path, required=True, help="Downloaded prithvi.wxc.2300m.v1 snapshot (has config.yaml, *.pt, climatology/)")
@@ -251,8 +279,13 @@ def main() -> None:
                         f"timestamps starting {timestamps[idx]}. Check the daily MERRA-2 files and climatology."
                     )
 
+            if idx == 0:
+                check_normalised_inputs(batch["x"], model, n_levels=len(LEVELS))
+
             model(batch)  # decoder output discarded; we only need the hook capture
             x_encoded = captured["x_encoded"]  # [B, n_global_mu, n_local_mu, embed_dim]
+            if idx == 0:
+                print(f"First-batch embedding magnitude: mean |value| {float(x_encoded.abs().mean()):.3g}, max {float(x_encoded.abs().max()):.3g}")
             if not torch.isfinite(x_encoded).all():
                 raise SystemExit(f"Model produced non-finite embeddings at timestamps starting {timestamps[idx]} despite finite inputs.")
 

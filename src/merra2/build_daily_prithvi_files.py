@@ -27,7 +27,8 @@ regional crop as long as we hand it files in exactly its expected format:
             repeating monthly climatology, time=12) -- so the time index
             used here is (day.month - 1), not always 0.
     MERRA_pres_YYYYMMDD.nc -- one per day, containing:
-        'lat', 'lon', 'lev' (native MERRA-2 model level index, 1..72),
+        'lat', 'lon', 'lev' (the 14 model levels Prithvi uses, stored
+            descending from 72 to 34 -- see LEVELS_AS_STORED),
             'time' as above
         one (time, lev, lat, lon) dataset per vertical_vars short name
 
@@ -45,6 +46,9 @@ Processing follows the repo's own input-preparation code
     with the official NAN_VALS (1.0 and 0.0). The loader and model have no
     missing-value handling, so a single NaN makes every embedding NaN.
 
+  - Only the 14 model levels Prithvi uses are kept, stored descending
+    (surface first), which is the order Merra2Dataset assumes.
+
 Every output file is checked for non-finite values before it is written.
 """
 import argparse
@@ -61,6 +65,13 @@ SYNOPTIC_HOURS = [0, 3, 6, 9, 12, 15, 18, 21]
 # From PrithviWxC/definitions.py: fill values for variables that are
 # undefined (NaN) away from land.
 NAN_VALS = {"GWETROOT": 1.0, "LAI": 0.0}
+# The 14 model levels Prithvi uses, in the order the file MUST store them:
+# descending, 72 (surface) first. Merra2Dataset reads the levels in file
+# order and then flips them, assuming exactly this layout (it is what the
+# repo's download.py writes: data.loc[{"lev": np.flip(VALID_LEVELS)}]).
+# Storing them ascending, as MERRA-2 does natively, hands the model every
+# profile upside down with no error.
+LEVELS_AS_STORED = [72.0, 71.0, 68.0, 63.0, 56.0, 53.0, 51.0, 48.0, 45.0, 44.0, 43.0, 41.0, 39.0, 34.0]
 
 
 def load_variable_config(path: Path) -> dict:
@@ -274,7 +285,7 @@ def main() -> None:
         if vert_ds is None:
             print(f"{day.date()}: skipping, missing vertical collection {VERTICAL_COLLECTION}")
             continue
-        vert_ds = resample_to_synoptic(vert_ds, day)
+        vert_ds = resample_to_synoptic(vert_ds, day).sel(lev=LEVELS_AS_STORED)
         lev = vert_ds["lev"].values
         vertical_arrays = {}
         for var in config.get(VERTICAL_COLLECTION, []):
