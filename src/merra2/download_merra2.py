@@ -33,6 +33,7 @@ or EARTHDATA_USERNAME / EARTHDATA_PASSWORD env vars, and network access
 (run on the service node).
 """
 import argparse
+import signal
 import time
 from datetime import datetime
 from pathlib import Path
@@ -51,12 +52,47 @@ import yaml
 STATIC_COLLECTIONS = {"M2C0NXCTM"}
 
 
+# The 14 model levels Prithvi uses. The vertical collection has 72; fetching
+# only these cuts download time and file size about fivefold.
+KEEP_LEVELS = [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0, 71.0, 72.0]
+GRANULE_TIMEOUT_S = 20 * 60
+
+
+class GranuleTimeout(Exception):
+    pass
+
+
+def _on_alarm(signum, frame):
+    raise GranuleTimeout(f"no result after {GRANULE_TIMEOUT_S // 60} minutes")
+
+
+def is_complete(path: Path) -> bool:
+    """True if `path` is a readable NetCDF file. A job killed mid-write
+    leaves a truncated file behind, which must not count as done."""
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    try:
+        # No engine given: earlier runs wrote with xarray's default engine,
+        # which may not have been HDF5. xarray picks by the file's signature.
+        with xr.open_dataset(path):
+            return True
+    except Exception:
+        return False
+
+
 def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5):
-    """Fetch one granule, crop to the region, and write it out, retrying on
-    transient network/service errors (S3/CloudFront occasionally returns 503
-    under sustained sequential access across a full-year download -- not a
-    bug, just needs a retry)."""
+    """Fetch one granule, crop to the region (and to the levels Prithvi
+    uses), and write it out.
+
+    Retries on transient network/service errors, and on a stall: a remote
+    read that never returns would otherwise hold the job until its time
+    limit. The file is written under a temporary name and renamed, so a
+    killed job never leaves a partial file under the final name.
+    """
+    tmp_path = out_path.with_name(out_path.name + ".part")
     for attempt in range(1, max_retries + 1):
+        signal.signal(signal.SIGALRM, _on_alarm)
+        signal.alarm(GRANULE_TIMEOUT_S)
         try:
             fileset = earthaccess.open([granule])
             # earthaccess.open() returns fsspec file-like objects with no
@@ -70,8 +106,11 @@ def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out
                 raise SystemExit(f"variables not found in granule: {missing}")
 
             cropped = ds[variables].sel(lat=slice(lat_min, lat_max), lon=slice(lon_min, lon_max))
-            cropped.load().to_netcdf(out_path)
+            if "lev" in cropped.dims:
+                cropped = cropped.sel(lev=KEEP_LEVELS)
+            cropped.load().to_netcdf(tmp_path, engine="h5netcdf")
             ds.close()
+            tmp_path.replace(out_path)
             return cropped.nbytes
         except SystemExit:
             raise
@@ -80,7 +119,10 @@ def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out
                 raise
             wait = min(30 * attempt, 300)
             print(f"  attempt {attempt}/{max_retries} failed ({e}); retrying in {wait}s...", flush=True)
+            signal.alarm(0)
             time.sleep(wait)
+        finally:
+            signal.alarm(0)
 
 
 def main() -> None:
@@ -136,7 +178,8 @@ def main() -> None:
         else:
             print(f"{collection} is a static/time-invariant collection -- searching with no temporal filter.")
         results = earthaccess.search_data(**search_kwargs)
-        print(f"Found {len(results)} granules for {collection}")
+        print(f"Found {len(results)} granules for {collection}", flush=True)
+        n_skipped = 0
 
         for granule in results:
             granule_id = granule.get("meta", {}).get("native-id") or granule["umm"]["GranuleUR"]
@@ -146,9 +189,12 @@ def main() -> None:
             # transient error even with retries (or a job timeout, a manual
             # Ctrl-C, etc.) -- skip granules already written by a previous
             # run instead of redoing completed work.
-            if out_path.exists() and out_path.stat().st_size > 0:
+            if is_complete(out_path):
                 manifest_rows.append({"collection": collection, "path": str(out_path)})
+                n_skipped += 1
                 continue
+            if out_path.exists():
+                print(f"  {out_path.name} exists but is unreadable (interrupted write?); fetching again.", flush=True)
 
             nbytes = fetch_crop_write(
                 granule, variables,
@@ -156,7 +202,9 @@ def main() -> None:
                 out_path,
             )
             manifest_rows.append({"collection": collection, "path": str(out_path)})
-            print(f"  wrote {out_path} ({nbytes / 1e6:.1f} MB)")
+            print(f"  wrote {out_path} ({nbytes / 1e6:.1f} MB)", flush=True)
+        if n_skipped:
+            print(f"  {n_skipped} granules were already on disk and readable; skipped.", flush=True)
 
     manifest_path = args.out_dir / "download_manifest.csv"
     import csv

@@ -10,7 +10,9 @@
 # and price parsing (no GPU job, no final assembly).
 #
 # Downloads run one year at a time (ISO-NE rate-limits, and the service node
-# is slow); everything else for a year starts as soon as its inputs exist.
+# is slow), with each year's MERRA-2 fetched as four quarters in parallel.
+# Everything else for a year starts as soon as its inputs exist. Safe to
+# re-run for a year that was interrupted: finished files are skipped.
 # A year whose download fails stops there; later years still run.
 set -euo pipefail
 
@@ -28,18 +30,27 @@ S=cluster/sbatch
 prev_merra=""
 prev_isone=""
 
-submit() {  # submit NAME DEPENDENCY SCRIPT -> prints job id
-  local name="$1" dep="$2" script="$3"
-  local args=(--parsable --account="${ACCOUNT}" --job-name="${name}_${YEAR}" --export=ALL,YEAR="${YEAR}")
+submit() {  # submit NAME DEPENDENCY SCRIPT [EXTRA_EXPORTS] -> prints job id
+  local name="$1" dep="$2" script="$3" extra="${4:-}"
+  local args=(--parsable --account="${ACCOUNT}" --job-name="${name}_${YEAR}" --export=ALL,YEAR="${YEAR}${extra:+,${extra}}")
   [ -n "${dep}" ] && args+=(--dependency="${dep}")
   sbatch "${args[@]}" "${script}"
 }
 
-for YEAR in "$@"; do
+YEARS=("$@")
+for YEAR in "${YEARS[@]}"; do
   [[ "${YEAR}" =~ ^(19|20)[0-9]{2}$ ]] || { echo "Not a year: ${YEAR}" >&2; exit 1; }
   export YEAR
 
-  merra=$(submit merra2_dl "${prev_merra:+afterany:${prev_merra}}" $S/service/03_download_merra2_2024.sbatch)
+  # The MERRA-2 download is the slow step, so each year is fetched as four
+  # quarters in parallel. Files are written under a temporary name and
+  # renamed, so the quarters cannot corrupt each other.
+  merra=""
+  for q in "01-01 03-31" "04-01 06-30" "07-01 09-30" "10-01 12-31"; do
+    set -- $q
+    id=$(submit "merra2_dl_${1%%-*}" "${prev_merra:+afterany:${prev_merra}}" $S/service/03_download_merra2_2024.sbatch "START=${YEAR}-$1,END=${YEAR}-$2")
+    merra="${merra:+${merra}:}${id}"
+  done
   demand=$(submit isone_demand_dl "${prev_isone:+afterany:${prev_isone}}" $S/service/04_download_isone_demand_2024.sbatch)
   lmp=$(submit isone_lmp_dl "afterany:${demand}" $S/service/05_download_isone_lmp_2024.sbatch)
   prev_merra="${merra}"
