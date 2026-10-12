@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+# Show Python output in the log as it happens instead of in delayed chunks.
+export PYTHONUNBUFFERED=1
+
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"

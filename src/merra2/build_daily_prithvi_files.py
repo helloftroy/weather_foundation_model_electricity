@@ -96,9 +96,15 @@ def open_collection_day(data_dir: Path, collection: str, day: pd.Timestamp) -> x
     coll_dir = data_dir / collection
     if not coll_dir.is_dir():
         return None
-    # download_merra2.py writes one file per granule; a granule is typically
-    # one UTC day. Glob broadly and let xarray's time selection narrow it.
-    files = sorted(coll_dir.glob("*.nc"))
+    # download_merra2.py writes one file per granule (one UTC day), with the
+    # date in the file name. Open only this day's file and the previous
+    # day's (for centring 00:00), not the whole year: opening every file for
+    # every day made a year take hours. Fall back to all files if the names
+    # don't carry dates.
+    previous = day - pd.Timedelta(days=1)
+    files = sorted(set(coll_dir.glob(f"*{day:%Y%m%d}*.nc")) | set(coll_dir.glob(f"*{previous:%Y%m%d}*.nc")))
+    if not files:
+        files = sorted(coll_dir.glob("*.nc"))
     if not files:
         return None
     ds = xr.open_mfdataset(files, combine="by_coords", decode_times=True)
@@ -305,7 +311,7 @@ def main() -> None:
             day, lat, lon, lev, vertical_arrays,
         )
         n_written += 1
-        if n_written % 30 == 0:
+        if n_written == 1 or n_written % 10 == 0:
             print(f"...{n_written} days written (latest {day.date()})")
 
     print(f"Done. Wrote {n_written}/{len(days)} days to {args.out_dir_surface} and {args.out_dir_vertical}")

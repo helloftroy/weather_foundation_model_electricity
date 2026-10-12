@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Show Python output in the log as it happens instead of in delayed chunks.
+export PYTHONUNBUFFERED=1
+
 # Year to process. Override at submit time: sbatch --export=ALL,YEAR=2023 ...
 YEAR="${YEAR:-2024}"
 echo "Year: ${YEAR}"
