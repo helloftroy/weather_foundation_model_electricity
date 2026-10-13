@@ -5,7 +5,7 @@ Setup and cluster commands live in `PROJECT_NOTES.md`.
 
 Last updated: 2026-10-09
 
-## Status (2026-10-12)
+## Status (2026-10-13)
 
 | Model | Status |
 |---|---|
@@ -13,7 +13,7 @@ Last updated: 2026-10-09
 | Calendar + simple weather | Done, 2023 + 2024 |
 | Calendar + Prithvi (embedding pooled over the whole crop) | Done. Helps over calendar alone; clearly worse than simple weather. |
 | Calendar + weather + Prithvi (pooled) | Done. Slightly worse than weather alone. |
-| Prithvi with local (un-pooled) tokens | **Not run.** Needs one more extraction pass; see "First Prithvi results". |
+| Prithvi with local (un-pooled) tokens | Done (exploratory). Better than pooled, still well behind simple weather; adds a small, consistent gain on top of weather. See "Local-token results". |
 
 Read "First Prithvi results" directly below first. The sections after it
 describe the original 2024-only baselines, which used an earlier version of
@@ -92,6 +92,71 @@ This explanation fits the evidence but has not been tested. The test is to
 use the encoder's un-pooled patch tokens (each covers about 1 x 1.25
 degrees) at each zone's location. `extract_embeddings.py` now saves these
 for a New England box; it needs one more GPU pass per year.
+
+## Local-token results (2026-10-13)
+
+Tests the explanation above. The encoder's un-pooled patch tokens (one per
+1 x 1.25 degree patch) were saved for an 8 x 7 patch box over New England,
+for 2023 and 2024. Each zone is given the token(s) at its own location,
+standardised and reduced to 50 principal components fitted on 2023. One
+pooled CatBoost model, 3,000 trees, train 2023, test 2024.
+Script: `local/explore_local_tokens.py`.
+
+Mean zone MAPE (single seed unless noted):
+
+| Prithvi input | Calendar + Prithvi | Calendar + weather + Prithvi |
+|---|---|---|
+| (none) | 11.9% | 5.26% (3 seeds: 5.25-5.27) |
+| Pooled over the whole crop (earlier result) | 9.9% | 5.7% |
+| Mean of all 56 New England patches | 10.0% | 5.16% |
+| Nearest single patch | 9.1% | 5.18% |
+| Four nearest patches, interpolated | 8.9% | 5.12% |
+| Mean of the 3 x 3 patches around the zone | 8.8% (3 seeds: 8.82-8.84) | 5.11% (3 seeds: 5.09-5.13) |
+
+Variations on the nearest patch: 20 components 9.3%, 200 components 9.1%.
+All 2,560 raw dimensions with no PCA (3 x 3, 1,000 trees): 8.95% alone and
+5.66% with weather.
+
+### What these show
+
+- **Local tokens are better than the pooled embedding**, but not by much:
+  Prithvi alone improves from 9.9% to about 8.8%. Simple local weather is
+  at 5.3%. The pooling was part of the problem, not most of it.
+- **Local tokens add a small, repeatable gain on top of weather:** 5.26% to
+  5.11%, with the three seeds of each not overlapping. It is 0.15 points.
+- **More components or the raw 2,560 dimensions do not help.**
+
+### Why local tokens fall short: local temperature is not easy to read from them
+
+How well a straight-line fit recovers a zone's own 2 m temperature (fit on
+2023, error on 2024):
+
+| Source | Typical error (RMSE) |
+|---|---|
+| Crop-pooled embedding, 50 components | 2.8 K |
+| Mean of all 56 New England patches, 50 components | 3.6 K |
+| 3 x 3 patches around the zone, 50 components | 4.9 K |
+| Nearest patch, 50 components | 6.2 K |
+| Nearest patch, 1,000 components (Boston zone) | 3.4 K |
+| Nearest patch, all 2,560 dimensions, ridge (Boston zone) | 3.7 K |
+
+- A single patch token gives a zone's temperature **less** accurately than
+  the big average does. Averaging many tokens sharpens the large-scale
+  temperature; one token on its own is dominated by other content.
+- There is no sign that a zone's temperature is held at that zone's
+  patch: for all eight zones the best single patch for reading temperature
+  was the same offshore one.
+- The token layout itself was checked and is right: time-averaged tokens
+  form smooth fields on the map with breaks exactly at the model's
+  mask-unit boundaries, and neighbouring patches' anomalies are far more
+  alike (0.60) than distant ones (0.05).
+
+So the encoder output, whether pooled or local, does not hand a downstream
+model the near-surface temperature precisely, and near-surface temperature
+is most of what demand needs. This is a statement about these frozen
+encoder tokens read with PCA or trees. It does not rule out other ways of
+using the model (a different layer, the decoder's reconstructed fields, or
+fine-tuning).
 
 ### Not yet done for these models
 
