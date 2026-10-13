@@ -36,7 +36,7 @@ def style(ax):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--predictions", type=Path, required=True)
-    parser.add_argument("--split", default="blocked", choices=["chronological", "blocked"])
+    parser.add_argument("--split", default="blocked", choices=["year_ahead", "chronological", "blocked"])
     parser.add_argument("--feature-set", default="calendar+weather")
     parser.add_argument("--zones", nargs=2, default=["VT", "NH"])
     parser.add_argument("--out-png", type=Path, required=True)
@@ -81,7 +81,8 @@ def main() -> None:
         ax.text(peak, t.loc[peak, "mape"] + err_max * 0.02, f"{t.loc[peak, 'mape']:.0f}%", ha="center", va="bottom", fontsize=10, color=INK)
         ax.text(0.99, 0.93, f"All hours: {overall[zone]:.1f}%", transform=ax.transAxes, ha="right", va="top", fontsize=11, color=INK_2)
 
-    period = "day 22 onward of every month, 2024" if args.split == "blocked" else "Oct 1 to Dec 31, 2024"
+    period = {"blocked": "day 22 onward of every month, 2024", "chronological": "Oct 1 to Dec 31, 2024",
+              "year_ahead": "all of 2024 (trained on earlier years only)"}[args.split]
     names = " and ".join(ZONE_NAMES.get(z, z) for z in args.zones)
     fig.text(0.06, 0.94, f"Demand prediction error by hour of day: {names}", fontsize=18, color=INK, weight="bold")
     fig.text(0.06, 0.89, f"CatBoost, model inputs: {MODEL_LABELS.get(args.feature_set, args.feature_set)}. Held-out test hours: {period}.",

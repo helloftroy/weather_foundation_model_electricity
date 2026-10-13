@@ -95,7 +95,7 @@ def panel(ax, shapes, values: dict, cmap, norm, title: str, fmt: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--predictions", type=Path, required=True, help="test_predictions.parquet from train_catboost_comparisons.py")
-    parser.add_argument("--split", default="chronological", choices=["chronological", "blocked"])
+    parser.add_argument("--split", default="chronological", choices=["year_ahead", "chronological", "blocked"])
     parser.add_argument("--feature-set", default="calendar+weather")
     parser.add_argument("--counties-json", type=Path, default=Path("data/geo/counties.json"))
     parser.add_argument("--out-png", type=Path, required=True)
@@ -109,7 +109,9 @@ def main() -> None:
     df = df.assign(ape=(df[col] - df["demand_MW"]).abs() / df["demand_MW"] * 100)
     z = df.groupby("zone").agg(actual=("demand_MW", "mean"), predicted=(col, "mean"), mape=("ape", "mean"))
     local = df["timestamp_local"]
-    period = f"{local.min():%b %-d} to {local.max():%b %-d, %Y}" if args.split == "chronological" else "day 22 onward of every month, 2024"
+    period = "day 22 onward of every month" if args.split == "blocked" else f"{local.min():%b %-d} to {local.max():%b %-d, %Y}"
+    if args.split == "year_ahead":
+        period += " (trained on earlier years only)"
 
     shapes = load_zone_shapes(args.counties_json)
     blue = LinearSegmentedColormap.from_list("blue", BLUE)

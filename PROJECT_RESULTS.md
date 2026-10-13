@@ -5,22 +5,116 @@ Setup and cluster commands live in `PROJECT_NOTES.md`.
 
 Last updated: 2026-10-09
 
-## Status
+## Status (2026-10-12)
 
 | Model | Status |
 |---|---|
-| Calendar only | Done (provisional) |
-| Calendar + simple weather | Done (provisional) |
-| Calendar + Prithvi embedding | **Not run.** First embedding table was all NaN; cluster rerun in progress. |
-| Calendar + weather + Prithvi | **Not run**, same reason. |
+| Calendar only | Done, 2023 + 2024 |
+| Calendar + simple weather | Done, 2023 + 2024 |
+| Calendar + Prithvi (embedding pooled over the whole crop) | Done. Helps over calendar alone; clearly worse than simple weather. |
+| Calendar + weather + Prithvi (pooled) | Done. Slightly worse than weather alone. |
+| Prithvi with local (un-pooled) tokens | **Not run.** Needs one more extraction pass; see "First Prithvi results". |
 
-"Provisional" because the weather features will change slightly once the
-MERRA-2 daily files are rebuilt (see "Known issues").
+Read "First Prithvi results" directly below first. The sections after it
+describe the original 2024-only baselines, which used an earlier version of
+the weather features, early stopping, and no Prithvi; they are kept for the
+method description and for the record.
 
-Nothing here says anything yet about whether Prithvi helps.
+## First Prithvi results (2026-10-12)
 
-Everything down to the divider is the **demand** models. The **price** models, added
-2026-10-09, are in their own section at the end.
+### What changed from the earlier runs
+
+- **Two years.** 2023 and 2024 are complete (2022 is still downloading).
+- **New headline split, "year-ahead":** train on all of 2023, test on all of
+  2024 (70,032 training and 70,224 test zone-hours). No test day is near a
+  training day, and every season is in both.
+- **Fixed 3,000 trees, no early stopping** (see "Does training longer
+  help?"). September and days 19-21 are still left out of the two
+  2024-only splits so those stay comparable with earlier runs.
+- **Rebuilt weather features:** instantaneous values from M2I1NXASM.
+- **Prithvi embedding:** the encoder output averaged over every token in the
+  model's input crop (30-60N, 90-50W, an area running from Georgia to Hudson
+  Bay), one 2,560-vector per 3-hourly weather time, the same for all zones.
+  Standardised and reduced to 50 principal components (95% of its
+  variance), fitted on training rows only.
+
+### Results: mean absolute percentage error, mean over the eight zones
+
+| Feature set | Year-ahead (train 2023, test 2024) | Chronological (2024) | Blocked (2024) |
+|---|---|---|---|
+| Calendar | 11.9% | 15.5% | 11.0% |
+| Calendar + weather | **5.3%** | **8.9%** | **5.3%** |
+| Calendar + Prithvi (pooled) | 9.9% | 17.0% | 9.6% |
+| Calendar + weather + Prithvi (pooled) | 5.7% | 9.2% | 5.8% |
+
+Year-ahead mean zone R²: 0.43, 0.88, 0.61, 0.86 in the same order.
+
+Year-ahead, by zone (MAPE %):
+
+| Zone | Calendar | + weather | + Prithvi | + weather + Prithvi |
+|---|---|---|---|---|
+| CT | 11.3 | 4.8 | 10.3 | 5.3 |
+| ME | 8.4 | 5.2 | 7.4 | 5.4 |
+| NEMA | 10.4 | 4.0 | 9.4 | 4.4 |
+| NH | 7.9 | 4.2 | 7.3 | 4.7 |
+| RI | 14.1 | 4.9 | 9.9 | 5.3 |
+| SEMA | 9.9 | 4.8 | 9.0 | 5.5 |
+| VT | 24.3 | 9.8 | 18.2 | 9.9 |
+| WCMA | 9.1 | 4.4 | 7.7 | 4.9 |
+
+### What these show
+
+- **The pooled Prithvi embedding carries real signal**: it cuts error from
+  11.9% to 9.9% over calendar alone on the year-ahead split.
+- **It is much weaker than six simple local weather numbers** (5.3%), and
+  adding it to them makes the model slightly worse (5.7%), in every zone
+  and on every split. On the chronological split it is worse than calendar
+  alone.
+- **This is not sensitive to how the embedding is reduced.** With 10, 20,
+  50 or 200 components, or with the four quadrant embeddings instead of the
+  single pooled one, year-ahead error stays between 10.2% and 10.8%
+  (1,000-tree runs).
+
+### Why, most likely: the embedding is pooled over too large an area
+
+- A linear readout from the pooled embedding recovers the **crop-wide**
+  mean temperature almost exactly (held-out R² 0.99), humidity (0.997),
+  sunlight (0.98), time of day and season. The model input preparation is
+  now sound and the encoder is clearly representing the weather.
+- The same readout recovers an individual **zone's** temperature only to
+  within about 2.3-3.2 K (RMSE, 2024, trained on 2023), and local wind
+  hardly at all. The weather baseline has each zone's own temperature
+  exactly.
+- So this comparison is between local weather and a continental average,
+  which is a test of the pooling choice, not of what Prithvi knows.
+
+This explanation fits the evidence but has not been tested. The test is to
+use the encoder's un-pooled patch tokens (each covers about 1 x 1.25
+degrees) at each zone's location. `extract_embeddings.py` now saves these
+for a New England box; it needs one more GPU pass per year.
+
+### Not yet done for these models
+
+- No repeated seeds. Differences of a few tenths of a point are not
+  reliable; the gap between weather (5.3%) and pooled Prithvi (9.9%) is far
+  larger than that.
+- The fixed 3,000-tree setting was checked for overfitting only on the
+  calendar and weather models, not on the Prithvi ones.
+- Price models have not been rerun with two years or with Prithvi.
+
+Outputs: `results/phase3_2023_2024/`. Reproduce with:
+
+```bash
+for y in 2023 2024; do .venv/bin/python local/prepare_modeling_table.py \
+  --compact-parquet data/compact/modeling_input_${y}.parquet --out-parquet data/modeling_table_${y}.parquet; done
+.venv/bin/python local/train_catboost_comparisons.py \
+  --modeling-table data/modeling_table_2023.parquet data/modeling_table_2024.parquet \
+  --out-dir results/phase3_2023_2024
+```
+
+---
+
+# Original 2024-only baselines (2026-10-07)
 
 ## The question
 

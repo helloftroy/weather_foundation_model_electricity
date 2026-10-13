@@ -32,6 +32,7 @@ ever depend on data up to and including the target timestamp -- no future
 leakage into a downstream demand model.
 """
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +77,17 @@ def region_centers(lat_min: float, lon_min: float, mask_unit_size_px, n_global_l
     return centers
 
 
+def patch_grid(x_encoded: torch.Tensor, g_lat: int, g_lon: int, l_lat: int, l_lon: int) -> torch.Tensor:
+    """Undo PrithviWxC.to_patching: [batch, g_lat*g_lon, l_lat*l_lon, C] ->
+    [batch, lat_patches, lon_patches, C], so tokens can be indexed by
+    position. Valid for the encoder output: the encoder's window shift is
+    applied an even number of times, so tokens leave it in their original
+    places."""
+    b, _, _, c = x_encoded.shape
+    x = x_encoded.reshape(b, g_lat, g_lon, l_lat, l_lon, c).permute(0, 1, 3, 2, 4, 5)
+    return x.reshape(b, g_lat * l_lat, g_lon * l_lon, c)
+
+
 def check_normalised_inputs(x: torch.Tensor, model, n_levels: int) -> None:
     """Print how far the inputs sit from the model's own normalisation
     statistics, and stop if they are wildly off.
@@ -117,6 +129,11 @@ def main() -> None:
     parser.add_argument("--lead-time", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--out-parquet", type=Path, required=True)
+    parser.add_argument("--out-tokens", type=Path, default=None,
+                        help="Also save the un-pooled patch tokens inside --token-box to this .npy (float16), with a .json sidecar")
+    parser.add_argument("--token-box", type=float, nargs=4, default=[40.0, 48.0, -75.0, -66.25],
+                        metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
+                        help="Patches whose centres fall in this box are saved (default: New England)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -259,6 +276,27 @@ def main() -> None:
     centers = region_centers(dataset.lats.min(), dataset.lons.min(), mask_unit_size_px, n_global_lat, n_global_lon)
 
     n_samples = len(dataset)
+
+    # Un-pooled tokens for a sub-box. The pooled outputs below average over
+    # the whole 30 x 40 degree crop, which washes out local weather; the
+    # patch tokens (1 x 1.25 degrees each) keep it.
+    tokens_out = None
+    if args.out_tokens is not None:
+        patch_lat, patch_lon = p["patch_size_px"]
+        lat_c = np.asarray(dataset.lats, dtype=np.float64).reshape(-1, patch_lat).mean(axis=1)
+        lon_c = np.asarray(dataset.lons, dtype=np.float64).reshape(-1, patch_lon).mean(axis=1)
+        lat_lo, lat_hi, lon_lo, lon_hi = args.token_box
+        rows = np.where((lat_c >= lat_lo) & (lat_c < lat_hi))[0]
+        cols = np.where((lon_c >= lon_lo) & (lon_c < lon_hi))[0]
+        if len(rows) == 0 or len(cols) == 0:
+            raise SystemExit(f"--token-box {args.token_box} contains no patches (grid spans lat {lat_c.min()}..{lat_c.max()}, lon {lon_c.min()}..{lon_c.max()}).")
+        r0, r1, c0, c1 = int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+        args.out_tokens.parent.mkdir(parents=True, exist_ok=True)
+        tokens_out = np.lib.format.open_memmap(args.out_tokens, mode="w+", dtype=np.float16, shape=(n_samples, r1 - r0, c1 - c0, embed_dim))
+        print(f"Saving patch tokens: {r1 - r0} x {c1 - c0} patches, lat centres {lat_c[r0]:.2f}..{lat_c[r1 - 1]:.2f}, "
+              f"lon centres {lon_c[c0]:.3f}..{lon_c[c1 - 1]:.3f} ({tokens_out.nbytes / 1e9:.2f} GB)")
+    local_lat, local_lon = model.local_shape_mu
+
     global_out = np.empty((n_samples, embed_dim), dtype=np.float32)
     region_out = np.empty((n_samples, n_global_mu, embed_dim), dtype=np.float32)
 
@@ -292,6 +330,8 @@ def main() -> None:
             b = x_encoded.shape[0]
             global_out[idx:idx + b] = x_encoded.mean(dim=(1, 2)).cpu().numpy()
             region_out[idx:idx + b] = x_encoded.mean(dim=2).cpu().numpy()
+            if tokens_out is not None:
+                tokens_out[idx:idx + b] = patch_grid(x_encoded, n_global_lat, n_global_lon, local_lat, local_lon)[:, r0:r1, c0:c1].to(torch.float16).cpu().numpy()
             idx += b
 
             if idx % 100 < b:
@@ -308,6 +348,18 @@ def main() -> None:
     args.out_parquet.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(args.out_parquet, index=False)
     print(f"Wrote {len(df)} rows x {len(df.columns)} cols to {args.out_parquet}")
+
+    if tokens_out is not None:
+        tokens_out.flush()
+        meta = {
+            "layout": "[time, lat_patch, lon_patch, embed_dim], float16; encoder output tokens, un-pooled",
+            "timestamps": [pd.Timestamp(ts).isoformat() for ts in timestamps],
+            "patch_lat_centers": lat_c[r0:r1].tolist(),
+            "patch_lon_centers": lon_c[c0:c1].tolist(),
+            "token_box": list(args.token_box),
+        }
+        args.out_tokens.with_suffix(".json").write_text(json.dumps(meta))
+        print(f"Wrote patch tokens {tokens_out.shape} to {args.out_tokens}")
 
     meta_path = args.out_parquet.with_suffix(".regions.csv")
     pd.DataFrame(centers, columns=["lat_center", "lon_center"]).reset_index(names="region_index").to_csv(meta_path, index=False)

@@ -43,6 +43,8 @@ MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_da
 MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
 CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${SCRATCH_ROOT}/data/climatology_regional}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}.parquet}"
+# Un-pooled patch tokens over New England (about 0.85 GB per year).
+OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}.npy}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
@@ -55,6 +57,7 @@ python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --climatology-vertical-dir "${CLIMATOLOGY_DIR}" \
   --start "${START}" --end "${END}" \
   --batch-size "${BATCH_SIZE}" \
-  --out-parquet "${OUT_PARQUET}"
+  --out-parquet "${OUT_PARQUET}" \
+  --out-tokens "${OUT_TOKENS}"
 
 echo "Job finished: $(date)"
