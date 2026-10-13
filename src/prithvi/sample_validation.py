@@ -1,28 +1,38 @@
-"""Official-pipeline sample validation, using data we already have.
+"""Does the pretrained Prithvi WxC model actually work the way we run it?
 
-Replaces running examples/PrithviWxC_inference.ipynb directly: that
-notebook's own hf_hub_download/snapshot_download cells point at
-ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M, whose merra-2/ and climatology/
-directories are empty upstream (confirmed via direct HTTP HEAD checks,
-2026-09-30) -- likely deprecated in favor of Prithvi-WxC/prithvi.wxc.2300m.v1,
-which IS fully populated (confirmed: surface, vertical, and all climatology/
-scaler files present for the full 2020 sample year) and is the exact repo
-Phase 1 already downloads in full via cluster/sbatch/service/01_setup_prithvi.sbatch.
+Runs the model on the official GLOBAL sample data that ships with the
+weights (2020), and scores its output against the target field, relative to
+the climatology the model is handed:
 
-So instead of re-downloading (and hitting the same dead directories the
-notebook does), this points the OFFICIAL Merra2Dataset/PrithviWxC/preproc
-code directly at our already-downloaded weights-dir's merra-2/ and
-climatology/ subdirectories. Same official preprocessing and model code as
-the notebook -- just correctly located data, and it also directly exercises
-the encoder-hook embedding extraction from src/prithvi/extract_embeddings.py
-against real weights as a bonus sanity check.
+    skill = 1 - MSE(model output - target) / MSE(climatology - target)
 
-Uses the GLOBAL grid (the sample data is global, not our regional crop) with
-a tiny 2-day time range, matching the official demo's own scope.
+1 is perfect, 0 is no better than climatology, negative is worse. With lead
+time 0 the target equals the model's own input, so a working model should
+score close to 1.
+
+The same samples are run several ways, to separate out which of our choices
+(if any) breaks the model:
+
+    global, shuffled blocks   the repo's standard forward pass (what its
+                              inference notebook does, and what our runs did
+                              before 2026-10-13)
+    global, map order         mask units kept in map order
+    global, map order,        the same with the encoder's and decoder's
+      no window shift         shifted-window attention switched off
+    regional crop, map order  OUR SETUP: the same samples cropped to the
+                              30-59.5N, 90-50.6W box, 2 x 2 mask units
+    regional crop, shuffled   our setup before the block-order fix
+
+Scores are reported over the whole grid where that applies, and over our
+box in every case so the rows are comparable.
+
+Uses only the repo's own loader and model code, on data already downloaded
+by cluster/sbatch/service/01_setup_prithvi.sbatch.
 """
 import argparse
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
@@ -33,7 +43,7 @@ from PrithviWxC.dataloaders.merra2 import (
     preproc,
     static_input_scalers,
 )
-from PrithviWxC.model import PrithviWxC
+from PrithviWxC.model import PrithviWxC, _Shift
 
 SURFACE_VARS = [
     "EFLUX", "GWETROOT", "HFLUX", "LAI", "LWGAB", "LWGEM", "LWTUP", "PS",
@@ -46,130 +56,187 @@ LEVELS = [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0
 GLOBAL_PADDING = {"level": [0, 0], "lat": [0, -1], "lon": [0, 0]}  # matches the official demo: trims the duplicate 361st lat row
 
 
+BOX = (30.0, 59.5, -90.0, -50.625)  # lat_min, lat_max, lon_min, lon_max of our regional crop
+
+
+def build_model(p, scalers, n_lats_px, n_lons_px):
+    in_mu, in_sig, out_sig, static_mu, static_sig = scalers
+    return PrithviWxC(
+        in_channels=p["in_channels"], input_size_time=p["input_size_time"], in_channels_static=p["in_channels_static"],
+        input_scalers_mu=in_mu, input_scalers_sigma=in_sig, input_scalers_epsilon=p["input_scalers_epsilon"],
+        static_input_scalers_mu=static_mu, static_input_scalers_sigma=static_sig,
+        static_input_scalers_epsilon=p["static_input_scalers_epsilon"],
+        output_scalers=out_sig ** 0.5,
+        n_lats_px=n_lats_px, n_lons_px=n_lons_px,
+        patch_size_px=p["patch_size_px"], mask_unit_size_px=p["mask_unit_size_px"],
+        mask_ratio_inputs=0.0, mask_ratio_targets=0.0,
+        embed_dim=p["embed_dim"], n_blocks_encoder=p["n_blocks_encoder"], n_blocks_decoder=p["n_blocks_decoder"],
+        mlp_multiplier=p["mlp_multiplier"], n_heads=p["n_heads"],
+        dropout=p["dropout"], drop_path=p["drop_path"], parameter_dropout=p["parameter_dropout"],
+        residual="climate", masking_mode="global", positional_encoding="fourier",
+        encoder_shifting=True, decoder_shifting=True, checkpoint_encoder=[], checkpoint_decoder=[],
+    )
+
+
+def load_weights(model, state_dict, regional: bool) -> None:
+    if regional:
+        # Shifter masks are buffers computed from the grid shape; keep the regional model's own.
+        state_dict = {k: v for k, v in state_dict.items() if not k.endswith(("shifter.local_mask", "shifter.global_mask"))}
+        result = model.load_state_dict(state_dict, strict=False)
+        extra = [k for k in result.missing_keys if not k.endswith(("local_mask", "global_mask"))]
+        if extra or result.unexpected_keys:
+            raise SystemExit(f"Weight mismatch: missing {extra}, unexpected {result.unexpected_keys}")
+    else:
+        model.load_state_dict(state_dict, strict=True)
+
+
+def configure(model, ordered: bool, shift: bool) -> None:
+    """Switch block order and window shifting on an existing model."""
+    if ordered:
+        def ordered_mask(sizes):
+            idx = model._global_idx.view(1, -1).expand(sizes[0], -1)
+            return idx[:, :0], idx
+        model.generate_mask = ordered_mask
+    else:
+        model.generate_mask = model._gen_mask_global
+    if not hasattr(model, "_orig_shifters"):
+        model._orig_shifters = (model.encoder.lgl_block.shifter, model.decoder.lgl_block.shifter)
+    enc, dec = model._orig_shifters if shift else (_Shift(), _Shift())
+    model.encoder.lgl_block.shifter = enc
+    model.decoder.lgl_block.shifter = dec
+
+
+class Score:
+    """Running per-channel squared error of the model output and of climatology."""
+
+    def __init__(self, n_channels: int):
+        self.se_model = torch.zeros(n_channels, dtype=torch.float64)
+        self.se_clim = torch.zeros(n_channels, dtype=torch.float64)
+        self.abs_t2m = 0.0
+        self.n_px = 0
+
+    def add(self, out, y, clim, t2m_sigma: float) -> None:
+        self.se_model += ((out - y) ** 2).sum(dim=(0, 2, 3)).double().cpu()
+        self.se_clim += ((clim - y) ** 2).sum(dim=(0, 2, 3)).double().cpu()
+        i = SURFACE_VARS.index("T2M")
+        self.abs_t2m += float((out[:, i] - y[:, i]).abs().sum()) / t2m_sigma
+        self.n_px += out.shape[0] * out.shape[2] * out.shape[3]
+
+    def summary(self) -> dict:
+        skill = 1 - self.se_model / self.se_clim.clamp(min=1e-30)
+        n_sfc = len(SURFACE_VARS)
+        i = SURFACE_VARS.index("T2M")
+        return {
+            "surface (median of 20)": float(skill[:n_sfc].median()),
+            "vertical (median of 140)": float(skill[n_sfc:].median()),
+            "T2M skill": float(skill[i]),
+            "T2M mean |err| (sd)": self.abs_t2m / self.n_px,
+            "worst channel": float(skill.min()),
+        }
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--weights-dir", type=Path, required=True, help="Downloaded Prithvi-WxC/prithvi.wxc.2300m.v1 snapshot")
     parser.add_argument("--start", default="2020-01-01T00:00:00")
-    parser.add_argument("--end", default="2020-01-02T05:59:59")
+    parser.add_argument("--end", default="2020-01-03T23:59:59")
     parser.add_argument("--input-time", type=int, default=-6)
-    parser.add_argument("--lead-time", type=int, default=0)
-    parser.add_argument("--mask-ratio", type=float, default=0.0, help="0.0 matches our Phase 2 embedding-extraction use case")
+    parser.add_argument("--lead-times", type=int, nargs="+", default=[0, 6])
+    parser.add_argument("--n-samples", type=int, default=4)
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
-
-    surf_dir = args.weights_dir / "merra-2"
-    vert_dir = args.weights_dir / "merra-2"
-    clim_surf_dir = args.weights_dir / "climatology"
-    clim_vert_dir = args.weights_dir / "climatology"
-
-    dataset = Merra2Dataset(
-        time_range=(args.start, args.end),
-        lead_times=[args.lead_time],
-        input_times=[args.input_time],
-        data_path_surface=surf_dir,
-        data_path_vertical=vert_dir,
-        climatology_path_surface=clim_surf_dir,
-        climatology_path_vertical=clim_vert_dir,
-        surface_vars=SURFACE_VARS,
-        static_surface_vars=STATIC_SURFACE_VARS,
-        vertical_vars=VERTICAL_VARS,
-        levels=LEVELS,
-        positional_encoding="fourier",
-    )
-    assert len(dataset) > 0, "No valid samples -- check the sample data actually downloaded (see script docstring)."
-    print(f"Dataset: {len(dataset)} samples")
-
-    # n_lats_px/n_lons_px must reflect the grid AFTER padding (preproc()
-    # applies GLOBAL_PADDING, e.g. [0, -1] on lat trims the raw file's 361st
-    # duplicate pole row down to 360) -- NOT the raw file's own coordinate
-    # count, or the model constructor and the actual padded tensor shape
-    # mismatch.
-    n_lats_px = len(dataset.lats) + GLOBAL_PADDING["lat"][0] + GLOBAL_PADDING["lat"][1]
-    n_lons_px = len(dataset.lons) + GLOBAL_PADDING["lon"][0] + GLOBAL_PADDING["lon"][1]
-    print(f"Raw file grid: {len(dataset.lats)} x {len(dataset.lons)}")
-    print(f"Post-padding grid (used for model construction): {n_lats_px} x {n_lons_px} (should be 360 x 576)")
-
+    print(f"Device: {device}", flush=True)
     config = yaml.safe_load((args.weights_dir / "config.yaml").read_text())
     p = config["params"]
-
     clim_dir = args.weights_dir / "climatology"
     in_mu, in_sig = input_scalers(SURFACE_VARS, VERTICAL_VARS, LEVELS, clim_dir / "musigma_surface.nc", clim_dir / "musigma_vertical.nc")
     out_sig = output_scalers(SURFACE_VARS, VERTICAL_VARS, LEVELS, clim_dir / "anomaly_variance_surface.nc", clim_dir / "anomaly_variance_vertical.nc")
     static_mu, static_sig = static_input_scalers(clim_dir / "musigma_surface.nc", STATIC_SURFACE_VARS)
+    scalers = (in_mu, in_sig, out_sig, static_mu, static_sig)
+    t2m_sigma = float(in_sig[SURFACE_VARS.index("T2M")])
 
-    model = PrithviWxC(
-        in_channels=p["in_channels"],
-        input_size_time=p["input_size_time"],
-        in_channels_static=p["in_channels_static"],
-        input_scalers_mu=in_mu,
-        input_scalers_sigma=in_sig,
-        input_scalers_epsilon=p["input_scalers_epsilon"],
-        static_input_scalers_mu=static_mu,
-        static_input_scalers_sigma=static_sig,
-        static_input_scalers_epsilon=p["static_input_scalers_epsilon"],
-        output_scalers=out_sig ** 0.5,
-        n_lats_px=n_lats_px,
-        n_lons_px=n_lons_px,
-        patch_size_px=p["patch_size_px"],
-        mask_unit_size_px=p["mask_unit_size_px"],
-        mask_ratio_inputs=args.mask_ratio,
-        mask_ratio_targets=0.0,  # required on the repo's main branch; >0 raises NotImplementedError (target masking unsupported)
-        embed_dim=p["embed_dim"],
-        n_blocks_encoder=p["n_blocks_encoder"],
-        n_blocks_decoder=p["n_blocks_decoder"],
-        mlp_multiplier=p["mlp_multiplier"],
-        n_heads=p["n_heads"],
-        dropout=p["dropout"],
-        drop_path=p["drop_path"],
-        parameter_dropout=p["parameter_dropout"],
-        residual="climate",
-        masking_mode="global",  # matches the repo's own current demo config; inconsequential when mask_ratio=0 either way
-        positional_encoding="fourier",
-        encoder_shifting=True,  # matches the repo's own current demo config for this exact checkpoint
-        decoder_shifting=True,
-        checkpoint_encoder=[],
-        checkpoint_decoder=[],
-    )
-
-    # src/prithvi/download_prithvi_weights.py mirrors the HF repo's own
-    # layout directly under --weights-dir (the .pt is at the repo root,
-    # since Prithvi-WxC/prithvi.wxc.2300m.v1 has no "weights/" subfolder --
-    # that naming is the official notebook's own local convention, not ours).
     weights_path = args.weights_dir / "prithvi.wxc.2300m.v1.pt"
     if not weights_path.exists():
         weights_path = args.weights_dir / "weights" / "prithvi.wxc.2300m.v1.pt"
     state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
     if "model_state" in state_dict:
         state_dict = state_dict["model_state"]
-    model.load_state_dict(state_dict, strict=True)
-    model = model.to(device)
-    model.eval()
-    print(f"Loaded weights from {weights_path}")
 
-    captured = {}
-    model.encoder.register_forward_hook(lambda _m, _i, out: captured.__setitem__("x_encoded", out))
+    # Load the samples once per lead time (CPU), reuse them for every configuration.
+    batches = {}
+    for lead in args.lead_times:
+        dataset = Merra2Dataset(
+            time_range=(args.start, args.end), lead_times=[lead], input_times=[args.input_time],
+            data_path_surface=args.weights_dir / "merra-2", data_path_vertical=args.weights_dir / "merra-2",
+            climatology_path_surface=clim_dir, climatology_path_vertical=clim_dir,
+            surface_vars=SURFACE_VARS, static_surface_vars=STATIC_SURFACE_VARS, vertical_vars=VERTICAL_VARS,
+            levels=LEVELS, positional_encoding="fourier",
+        )
+        if len(dataset) == 0:
+            raise SystemExit("No valid samples in the official sample data for this time range.")
+        step = max(1, len(dataset) // args.n_samples)
+        batches[lead] = [preproc([dataset[i]], GLOBAL_PADDING) for i in range(0, len(dataset), step)][: args.n_samples]
+        lats = np.asarray(dataset.lats)[: batches[lead][0]["x"].shape[-2]]
+        lons = np.asarray(dataset.lons)
+        print(f"Lead {lead} h: {len(batches[lead])} samples of {len(dataset)}, grid {batches[lead][0]['x'].shape[-2]} x {batches[lead][0]['x'].shape[-1]}", flush=True)
 
-    data = next(iter(dataset))
-    batch = preproc([data], GLOBAL_PADDING)
-    for k, v in batch.items():
-        if isinstance(v, torch.Tensor):
-            batch[k] = v.to(device)
+    rows = np.where((lats >= BOX[0]) & (lats <= BOX[1]))[0]
+    cols = np.where((lons >= BOX[2]) & (lons <= BOX[3]))[0]
+    r, c = slice(int(rows[0]), int(rows[-1]) + 1), slice(int(cols[0]), int(cols[-1]) + 1)
+    print(f"Our box inside the global grid: {len(rows)} x {len(cols)} pixels, lat {lats[rows[0]]}..{lats[rows[-1]]}, lon {lons[cols[0]]}..{lons[cols[-1]]}", flush=True)
+    if (len(rows), len(cols)) != (60, 64):
+        raise SystemExit("Box does not come out as 60 x 64 pixels; check the sample grid.")
 
-    with torch.no_grad():
-        out = model(batch)
+    def crop(batch):
+        return {k: (v[..., r, c] if isinstance(v, torch.Tensor) and v.ndim >= 3 else v) for k, v in batch.items()}
 
-    x_encoded = captured["x_encoded"]
-    print(f"\nFull model output shape: {tuple(out.shape)}")
-    print(f"Encoder hook output shape: {tuple(x_encoded.shape)}  [batch, n_global_mu, n_local_mu, embed_dim]")
-    print(
-        f"global_shape_mu should be "
-        f"({n_lats_px // p['mask_unit_size_px'][0]}, {n_lons_px // p['mask_unit_size_px'][1]}) "
-        f"-> {x_encoded.shape[1]} matches expectation: "
-        f"{x_encoded.shape[1] == (n_lats_px // p['mask_unit_size_px'][0]) * (n_lons_px // p['mask_unit_size_px'][1])}"
-    )
-    print("\nSample validation passed.")
+    def run(model, lead, regional: bool) -> tuple[Score, Score]:
+        whole, box = Score(p["in_channels"]), Score(p["in_channels"])
+        for cpu_batch in batches[lead]:
+            b = crop(cpu_batch) if regional else cpu_batch
+            b = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in b.items()}
+            with torch.no_grad():
+                out = model(b)
+            if not torch.isfinite(out).all():
+                raise SystemExit("Model output is not finite.")
+            if regional:
+                box.add(out, b["y"], b["climate"], t2m_sigma)
+            else:
+                whole.add(out, b["y"], b["climate"], t2m_sigma)
+                box.add(out[..., r, c], b["y"][..., r, c], b["climate"][..., r, c], t2m_sigma)
+        return whole, box
+
+    results = []
+    for regional, n_lat, n_lon in ((False, len(lats), len(lons)), (True, 60, 64)):
+        model = build_model(p, scalers, n_lat, n_lon)
+        load_weights(model, state_dict, regional)
+        model = model.to(device).eval()
+        configs = ([("global, shuffled blocks (repo default)", False, True), ("global, map order", True, True), ("global, map order, no window shift", True, False)]
+                   if not regional else
+                   [("REGIONAL crop, map order (our setup)", True, True), ("regional crop, shuffled (our old setup)", False, True), ("regional crop, map order, no window shift", True, False)])
+        for name, ordered, shift in configs:
+            configure(model, ordered, shift)
+            for lead in args.lead_times:
+                torch.manual_seed(0)
+                whole, box = run(model, lead, regional)
+                results.append((name, lead, "whole grid" if not regional else None, whole, box))
+                s = box.summary()
+                print(f"  [{name}] lead {lead} h, in our box: surface {s['surface (median of 20)']:.3f}, vertical {s['vertical (median of 140)']:.3f}, T2M {s['T2M skill']:.3f}", flush=True)
+        del model
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    print("\nSkill relative to climatology (1 = perfect, 0 = no better than climatology), scored inside our box:")
+    print(f"{'configuration':44s} {'lead':>5s} {'surface':>8s} {'vertical':>9s} {'T2M':>7s} {'T2M |err| sd':>13s} {'worst ch.':>10s}")
+    for name, lead, _, whole, box in results:
+        s = box.summary()
+        print(f"{name:44s} {lead:4d}h {s['surface (median of 20)']:8.3f} {s['vertical (median of 140)']:9.3f} {s['T2M skill']:7.3f} {s['T2M mean |err| (sd)']:13.4f} {s['worst channel']:10.2f}")
+    print("\nSame, scored over the whole globe (global runs only):")
+    for name, lead, tag, whole, box in results:
+        if tag:
+            s = whole.summary()
+            print(f"{name:44s} {lead:4d}h {s['surface (median of 20)']:8.3f} {s['vertical (median of 140)']:9.3f} {s['T2M skill']:7.3f} {s['T2M mean |err| (sd)']:13.4f} {s['worst channel']:10.2f}")
 
 
 if __name__ == "__main__":
