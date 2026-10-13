@@ -276,7 +276,7 @@ def main() -> None:
             f"Unexpected weight mismatch. Missing: {sorted(set(result.missing_keys) - mask_keys)}; "
             f"unexpected: {result.unexpected_keys}"
         )
-    print(f"Loaded weights from {weights_path} (kept {len(mask_keys)} grid-dependent shifter masks from the regional model)")
+    print(f"Loaded weights from {weights_path} (using this grid's own {len(mask_keys)} shifter masks)")
     model = model.to(device)
     model.eval()
 

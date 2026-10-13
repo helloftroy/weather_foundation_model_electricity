@@ -5,19 +5,64 @@ Setup and cluster commands live in `PROJECT_NOTES.md`.
 
 Last updated: 2026-10-09
 
-## Status (2026-10-13, evening)
+## Status (2026-10-13, late)
 
-**All Prithvi results so far come from a flawed extraction and need
-rerunning.** See "Block-order bug" below. The calendar and weather results
-are unaffected.
+**Every Prithvi number in this file so far came from the model running at
+reduced accuracy, on a regional crop it does not work well with.** See
+"Regional-crop problem" below. Extraction has been moved to the global grid
+and confirmed on a two-day test; full years are being rerun. The calendar
+and simple-weather results are unaffected.
 
 | Item | Status |
 |---|---|
-| Calendar, calendar + weather | Valid. Three years (2022-2024) now available. |
-| Pooled Prithvi embedding | Computed with scrambled block geometry. Indicative only. |
-| Local patch tokens | **Invalid**: tokens were in the wrong quadrant three times in four. |
-| Nowcast vs day-old information | Done for weather and pooled Prithvi; see below. |
-| Decoder output, earlier encoder layers, raw input cube as baseline | Extraction updated to save them; not yet run. |
+| Calendar, calendar + weather | Valid. Three years (2022-2024). |
+| Pooled Prithvi embedding (all earlier results) | From the degraded regional-crop model. Indicative only. |
+| Local patch tokens (earlier result) | Invalid: degraded model, and tokens in the wrong quadrant. |
+| Global-grid extraction | Working on a two-day test. 2020 in progress; 2021-2024 need global downloads. |
+| Decoder output, earlier encoder layers, raw input cube as baseline | Saved by the new extraction; analysis waits for the first global year. |
+
+## Regional-crop problem (found 2026-10-13)
+
+All extraction up to this date gave the model a 60 x 64 pixel crop
+(30-60N, 90-50W; 2 x 2 mask units) instead of the 360 x 576 global grid it
+was trained on. The code accepts any grid whose size is a multiple of the
+mask unit, and this was taken as evidence that cropping was valid. It was
+never tested until now.
+
+**Test** (`src/prithvi/sample_validation.py`): the model is run on NASA's
+own global sample data (2020) and its output scored against the target,
+relative to the climatology it is given: skill = 1 - MSE(output - target) /
+MSE(climatology - target). At lead time 0 the target equals the input, so a
+working model should score near 1. The same four samples are cropped to
+areas of increasing size around New England; every row is scored in the
+same small New England box (40-47.5N, 75-66.9W).
+
+| Area given to the model | Skill, lead 0 h | Skill, lead 6 h | T2M error, lead 0 (sd) |
+|---|---|---|---|
+| 2 x 2 mask units (the crop used so far) | 0.82 | 0.44 | 0.086 |
+| 4 x 4 (15-75N, 110-30W) | 0.94 | 0.54 | 0.044 |
+| 4 x 6 (15-75N, 130-10W) | 0.94 | 0.60 | 0.037 |
+| 6 x 8 (0-90N, 150W-10E) | 0.96 | 0.60 | 0.028 |
+| 12 x 18 (global) | 0.98 | 0.95 | 0.013 |
+
+Skill is the median over the 20 surface variables; vertical variables show
+the same pattern. Four samples, one date range (2020-01-01 to 03).
+
+- **The model works as released on the global grid** (0.98 at lead 0, 0.95
+  at 6 h), so the weights, loading and data handling are right.
+- **It needs global context.** Skill rises with the area but only the full
+  grid gets close to 1; a quarter of the globe still gives 0.60 at 6 h.
+- **Block order does not affect skill** (shuffled, as in the repo's default
+  forward pass, and map order score the same on the global grid). It only
+  affects where saved tokens sit.
+- **The shifted-window attention matters**: switching it off on the global
+  grid drops 6 h skill from 0.96 to 0.78.
+
+**Fix:** extraction now runs on the global grid and saves the same New
+England patch tokens. On a two-day 2020 test the decoder's T2M error was
+0.017 sd against 0.147 sd for climatology (it was 0.055 against 0.059 on
+the regional crop). 2020 uses the global daily files shipped with the model
+weights; other years need global MERRA-2 downloads (about 150 GB per year).
 
 ## Block-order bug (found 2026-10-13)
 
@@ -26,8 +71,10 @@ are unaffected.
   still shuffles those blocks into a random order for every sample before
   the encoder. The extraction used the model's standard forward pass, with
   settings copied from the repo's inference notebook, and inherited this.
-- **Effect on the encoder:** its shifted-window attention assumes the
-  blocks are in map order, so it mixed the wrong neighbours.
+- **Effect on the encoder:** none measurable. Skill on the global grid is
+  the same with shuffled and map-ordered blocks (see "Regional-crop
+  problem"). An earlier version of this note said the attention mixed the
+  wrong neighbours; the test does not support that.
 - **Effect on saved outputs:** the crop-pooled embedding is an average, so
   the shuffle does not change what was averaged, but the values were
   produced by the mis-ordered encoder. The four quadrant embeddings and all
