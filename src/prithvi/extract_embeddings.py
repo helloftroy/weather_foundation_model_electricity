@@ -32,6 +32,7 @@ ever depend on data up to and including the target timestamp -- no future
 leakage into a downstream demand model.
 """
 import argparse
+import functools
 import json
 from pathlib import Path
 
@@ -59,6 +60,9 @@ STATIC_SURFACE_VARS = ["FRACI", "FRLAND", "FROCEAN", "PHIS"]
 VERTICAL_VARS = ["CLOUD", "H", "OMEGA", "PL", "QI", "QL", "QV", "T", "U", "V"]
 LEVELS = [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0, 71.0, 72.0]
 NO_PADDING = {"level": [0, 0], "lat": [0, 0], "lon": [0, 0]}
+# The global MERRA-2 grid has 361 latitude rows (both poles); the model uses 360.
+# Dropping the last row is what the repo's own notebooks do.
+GLOBAL_PADDING = {"level": [0, 0], "lat": [0, -1], "lon": [0, 0]}
 
 
 def region_centers(lat_min: float, lon_min: float, mask_unit_size_px, n_global_lat: int, n_global_lon: int):
@@ -135,6 +139,11 @@ def main() -> None:
                         help="Also save patch tokens from inside the encoder: 'embed' (before any attention) and/or block "
                              "indices that are multiples of 4 (0 = after the first local-attention block, before any "
                              "global mixing; the final block is always saved). Each adds a file the size of --out-tokens.")
+    parser.add_argument("--num-workers", type=int, default=4, help="Data-loading worker processes")
+    parser.add_argument("--pool-box", type=float, nargs=4, default=[30.0, 60.0, -90.0, -50.0],
+                        metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
+                        help="global_emb_* is the mean of the patch tokens in this box (default: the 30-60N, 90-50W "
+                             "area that earlier regional runs pooled over)")
     parser.add_argument("--token-box", type=float, nargs=4, default=[40.0, 48.0, -75.0, -66.25],
                         metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="Patches whose centres fall in this box are saved (default: New England)")
@@ -180,16 +189,24 @@ def main() -> None:
     # timestamps[i*batch_size : (i+1)*batch_size].
     timestamps = [s[0][0] for s in dataset.samples]
 
-    n_lats_px = len(dataset.lats)
+    # Global input (361 x 576) is the setup the model works properly in: on
+    # the official sample its output skill against climatology is 0.99 at
+    # lead 0 and 0.95 at 6 h, against 0.82 and 0.44 inside New England when
+    # it is only given a 60 x 64 pixel regional crop (sample_validation.py).
+    padding = GLOBAL_PADDING if len(dataset.lats) == 361 else NO_PADDING
+    n_lats_px = len(dataset.lats) + padding["lat"][0] + padding["lat"][1]
     n_lons_px = len(dataset.lons)
-    print(f"Regional grid: {n_lats_px} x {n_lons_px} pixels")
+    grid_lats = np.asarray(dataset.lats, dtype=np.float64)[:n_lats_px]
+    grid_lons = np.asarray(dataset.lons, dtype=np.float64)
+    print(f"Model grid: {n_lats_px} x {n_lons_px} pixels ({'global' if padding is GLOBAL_PADDING else 'regional crop'}), "
+          f"lat {grid_lats[0]}..{grid_lats[-1]}, lon {grid_lons[0]}..{grid_lons[-1]}")
 
     config = yaml.safe_load((args.weights_dir / "config.yaml").read_text())
     p = config["params"]
     mask_unit_size_px = p["mask_unit_size_px"]
     if n_lats_px % mask_unit_size_px[0] != 0 or n_lons_px % mask_unit_size_px[1] != 0:
         raise SystemExit(
-            f"Regional grid {n_lats_px}x{n_lons_px} is not divisible by "
+            f"Grid {n_lats_px}x{n_lons_px} is not divisible by "
             f"mask_unit_size_px {mask_unit_size_px} -- re-run src/merra2/define_region.py."
         )
     n_global_lat = n_lats_px // mask_unit_size_px[0]
@@ -303,10 +320,30 @@ def main() -> None:
         dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=lambda batch: preproc(batch, NO_PADDING),
+        num_workers=args.num_workers,
+        collate_fn=functools.partial(preproc, padding=padding),
     )
 
-    centers = region_centers(dataset.lats.min(), dataset.lons.min(), mask_unit_size_px, n_global_lat, n_global_lon)
+    centers = region_centers(grid_lats.min(), grid_lons.min(), mask_unit_size_px, n_global_lat, n_global_lon)
+    # One embedding per mask unit is only practical for a small crop (the globe has 216 units).
+    save_units = n_global_mu <= 16
+
+    # Patch-centre coordinates, and the box the pooled embedding is averaged over.
+    patch_lat, patch_lon = p["patch_size_px"]
+    lat_c = grid_lats.reshape(-1, patch_lat).mean(axis=1)
+    lon_c = grid_lons.reshape(-1, patch_lon).mean(axis=1)
+
+    def patches_in(box, what):
+        lat_lo, lat_hi, lon_lo, lon_hi = box
+        rows = np.where((lat_c >= lat_lo) & (lat_c < lat_hi))[0]
+        cols = np.where((lon_c >= lon_lo) & (lon_c < lon_hi))[0]
+        if len(rows) == 0 or len(cols) == 0:
+            raise SystemExit(f"{what} {list(box)} contains no patches (grid spans lat {lat_c.min()}..{lat_c.max()}, lon {lon_c.min()}..{lon_c.max()}).")
+        return int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+
+    q0, q1, d0, d1 = patches_in(args.pool_box, "--pool-box")
+    print(f"Pooled embedding (global_emb_*): mean of {q1 - q0} x {d1 - d0} patches, lat centres {lat_c[q0]:.2f}..{lat_c[q1 - 1]:.2f}, "
+          f"lon centres {lon_c[d0]:.3f}..{lon_c[d1 - 1]:.3f}")
 
     n_samples = len(dataset)
 
@@ -315,15 +352,7 @@ def main() -> None:
     # patch tokens (1 x 1.25 degrees each) keep it.
     tokens_out = None
     if args.out_tokens is not None:
-        patch_lat, patch_lon = p["patch_size_px"]
-        lat_c = np.asarray(dataset.lats, dtype=np.float64).reshape(-1, patch_lat).mean(axis=1)
-        lon_c = np.asarray(dataset.lons, dtype=np.float64).reshape(-1, patch_lon).mean(axis=1)
-        lat_lo, lat_hi, lon_lo, lon_hi = args.token_box
-        rows = np.where((lat_c >= lat_lo) & (lat_c < lat_hi))[0]
-        cols = np.where((lon_c >= lon_lo) & (lon_c < lon_hi))[0]
-        if len(rows) == 0 or len(cols) == 0:
-            raise SystemExit(f"--token-box {args.token_box} contains no patches (grid spans lat {lat_c.min()}..{lat_c.max()}, lon {lon_c.min()}..{lon_c.max()}).")
-        r0, r1, c0, c1 = int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+        r0, r1, c0, c1 = patches_in(args.token_box, "--token-box")
         args.out_tokens.parent.mkdir(parents=True, exist_ok=True)
         tokens_out = np.lib.format.open_memmap(args.out_tokens, mode="w+", dtype=np.float16, shape=(n_samples, r1 - r0, c1 - c0, embed_dim))
         print(f"Saving patch tokens: {r1 - r0} x {c1 - c0} patches, lat centres {lat_c[r0]:.2f}..{lat_c[r1 - 1]:.2f}, "
@@ -345,7 +374,7 @@ def main() -> None:
     local_lat, local_lon = model.local_shape_mu
 
     global_out = np.empty((n_samples, embed_dim), dtype=np.float32)
-    region_out = np.empty((n_samples, n_global_mu, embed_dim), dtype=np.float32)
+    region_out = np.empty((n_samples, n_global_mu, embed_dim), dtype=np.float32) if save_units else None
 
     idx = 0
     with torch.no_grad():
@@ -375,8 +404,9 @@ def main() -> None:
                 raise SystemExit(f"Model produced non-finite embeddings at timestamps starting {timestamps[idx]} despite finite inputs.")
 
             b = x_encoded.shape[0]
-            global_out[idx:idx + b] = x_encoded.mean(dim=(1, 2)).cpu().numpy()
-            region_out[idx:idx + b] = x_encoded.mean(dim=2).cpu().numpy()
+            global_out[idx:idx + b] = patch_grid(x_encoded, n_global_lat, n_global_lon, local_lat, local_lon)[:, q0:q1, d0:d1].mean(dim=(1, 2)).cpu().numpy()
+            if save_units:
+                region_out[idx:idx + b] = x_encoded.mean(dim=2).cpu().numpy()
             if tokens_out is not None:
                 def boxed(tok):
                     return patch_grid(tok, n_global_lat, n_global_lon, local_lat, local_lon)[:, r0:r1, c0:c1].to(torch.float16).cpu().numpy()
@@ -406,9 +436,11 @@ def main() -> None:
 
     columns = ["timestamp"]
     columns += [f"global_emb_{d}" for d in range(embed_dim)]
-    columns += [f"region{r}_emb_{d}" for r in range(n_global_mu) for d in range(embed_dim)]
-
-    data = np.concatenate([global_out, region_out.reshape(n_samples, -1)], axis=1)
+    if save_units:
+        columns += [f"region{r}_emb_{d}" for r in range(n_global_mu) for d in range(embed_dim)]
+        data = np.concatenate([global_out, region_out.reshape(n_samples, -1)], axis=1)
+    else:
+        data = global_out
     df = pd.DataFrame(data, columns=columns[1:])
     df.insert(0, "timestamp", pd.to_datetime(timestamps))
 
@@ -429,8 +461,10 @@ def main() -> None:
                 "recon_sfc": {"file": f"{stem.name}_recon_sfc.npy", "layout": "decoder output, surface channels only, same normalisation", "channels": list(SURFACE_VARS)},
                 "climate_sfc": {"file": f"{stem.name}_climate_sfc.npy", "layout": "climatology given to the model for the target time, surface channels, same normalisation", "channels": list(SURFACE_VARS)},
             },
-            "pixel_lats": np.asarray(dataset.lats, dtype=np.float64)[r0 * patch_lat:r1 * patch_lat].tolist(),
-            "pixel_lons": np.asarray(dataset.lons, dtype=np.float64)[c0 * patch_lon:c1 * patch_lon].tolist(),
+            "pixel_lats": grid_lats[r0 * patch_lat:r1 * patch_lat].tolist(),
+            "pixel_lons": grid_lons[c0 * patch_lon:c1 * patch_lon].tolist(),
+            "model_grid": f"{n_lats_px} x {n_lons_px}",
+            "pool_box": list(args.pool_box),
             "input_time_hours": args.input_time,
             "lead_time_hours": args.lead_time,
             "timestamps": [pd.Timestamp(ts).isoformat() for ts in timestamps],

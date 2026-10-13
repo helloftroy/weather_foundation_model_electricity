@@ -80,7 +80,7 @@ def is_complete(path: Path) -> bool:
         return False
 
 
-def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5):
+def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5, tmp_dir=None):
     """Fetch one granule, crop to the region (and to the levels Prithvi
     uses), and write it out.
 
@@ -92,9 +92,18 @@ def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out
     tmp_path = out_path.with_name(out_path.name + ".part")
     for attempt in range(1, max_retries + 1):
         signal.signal(signal.SIGALRM, _on_alarm)
-        signal.alarm(GRANULE_TIMEOUT_S)
+        signal.alarm(GRANULE_TIMEOUT_S * (3 if tmp_dir else 1))
+        raw_path = None
         try:
-            fileset = earthaccess.open([granule])
+            if tmp_dir is not None:
+                # Whole-file mode: download the granule over plain HTTPS, cut
+                # it down locally, delete the original. Much faster than
+                # remote range reads when most of the file is wanted.
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                raw_path = Path(earthaccess.download([granule], local_path=str(tmp_dir), threads=1)[0])
+                fileset = [raw_path]
+            else:
+                fileset = earthaccess.open([granule])
             # earthaccess.open() returns fsspec file-like objects with no
             # filename/extension to sniff, so xarray's engine auto-guessing
             # fails even though the underlying format is fine -- MERRA-2 is
@@ -111,6 +120,8 @@ def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out
             cropped.load().to_netcdf(tmp_path, engine="h5netcdf")
             ds.close()
             tmp_path.replace(out_path)
+            if raw_path is not None:
+                raw_path.unlink(missing_ok=True)
             return cropped.nbytes
         except SystemExit:
             raise
@@ -123,6 +134,8 @@ def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out
             time.sleep(wait)
         finally:
             signal.alarm(0)
+            if raw_path is not None and raw_path.exists() and not out_path.exists():
+                raw_path.unlink(missing_ok=True)  # failed attempt: drop the partial download
 
 
 def main() -> None:
@@ -136,6 +149,9 @@ def main() -> None:
     parser.add_argument("--lon-min", type=float, required=True)
     parser.add_argument("--lon-max", type=float, required=True)
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--whole-file", action="store_true",
+                        help="Download each granule in full and subset it locally (use for the global grid)")
+    parser.add_argument("--tmp-dir", type=Path, default=None, help="Where whole-file downloads are held before subsetting")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -199,7 +215,7 @@ def main() -> None:
             nbytes = fetch_crop_write(
                 granule, variables,
                 args.lat_min, args.lat_max, args.lon_min, args.lon_max,
-                out_path,
+                out_path, tmp_dir=(args.tmp_dir or args.out_dir / "_raw") if args.whole_file else None,
             )
             manifest_rows.append({"collection": collection, "path": str(out_path)})
             print(f"  wrote {out_path} ({nbytes / 1e6:.1f} MB)", flush=True)

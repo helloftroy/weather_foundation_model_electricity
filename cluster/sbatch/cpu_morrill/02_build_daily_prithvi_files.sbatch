@@ -2,7 +2,7 @@
 #SBATCH --job-name=build_daily_prithvi_files
 #SBATCH --partition=morrill
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --time=48:00:00
 #SBATCH --output=logs/build_daily_prithvi_files_%j.out
 #SBATCH --error=logs/build_daily_prithvi_files_%j.err
@@ -35,10 +35,15 @@ mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-DATA_DIR="${DATA_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}}"
+# GRID=global (default) runs on the full MERRA-2 grid, which is the only
+# setup in which the model performs properly (see sample_validation.py).
+# GRID=regional is the old 30-60N, 90-50W crop, kept for comparison.
+GRID="${GRID:-global}"
+SUFFIX=$([ "${GRID}" = "global" ] && echo "_global" || echo "")
+DATA_DIR="${DATA_DIR:-${SCRATCH_ROOT}/data/merra2${SUFFIX}_${YEAR}}"
 VARIABLES_CONFIG="${VARIABLES_CONFIG:-${REPO_ROOT}/configs/merra2_variables.yaml}"
-OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
-OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
+OUT_DIR_SURFACE="${OUT_DIR_SURFACE:-${SCRATCH_ROOT}/data/merra2${SUFFIX}_${YEAR}_daily}"
+OUT_DIR_VERTICAL="${OUT_DIR_VERTICAL:-${SCRATCH_ROOT}/data/merra2${SUFFIX}_${YEAR}_daily}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31}"
 

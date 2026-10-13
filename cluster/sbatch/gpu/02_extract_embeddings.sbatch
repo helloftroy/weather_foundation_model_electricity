@@ -39,9 +39,23 @@ source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 WEIGHTS_DIR="${WEIGHTS_DIR:-${SCRATCH_ROOT}/weights/prithvi.wxc.2300m.v1}"
-MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
-MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
-CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${SCRATCH_ROOT}/data/climatology_regional}"
+# GRID=global (default) runs on the full MERRA-2 grid, which is the only
+# setup in which the model performs properly (see sample_validation.py).
+# GRID=regional is the old 30-60N, 90-50W crop, kept for comparison.
+GRID="${GRID:-global}"
+if [ "${GRID}" = "global" ]; then
+  DAILY_DIR="${SCRATCH_ROOT}/data/merra2_global_${YEAR}_daily"
+  # 2020 ships ready-made with the model weights; use it unless we built our own.
+  if [ ! -d "${DAILY_DIR}" ] && [ "${YEAR}" = "2020" ]; then DAILY_DIR="${WEIGHTS_DIR}/merra-2"; fi
+  DEFAULT_CLIMATOLOGY="${WEIGHTS_DIR}/climatology"
+else
+  DAILY_DIR="${SCRATCH_ROOT}/data/merra2_${YEAR}_daily"
+  DEFAULT_CLIMATOLOGY="${SCRATCH_ROOT}/data/climatology_regional"
+fi
+echo "Grid: ${GRID}; daily MERRA-2 files: ${DAILY_DIR}"
+MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${DAILY_DIR}}"
+MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${DAILY_DIR}}"
+CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${DEFAULT_CLIMATOLOGY}}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}.parquet}"
 # Extra encoder taps, each another ~0.85 GB per year: "embed" and/or block
 # indices that are multiples of 4, e.g. LAYERS="embed 0 12". Empty = none.
@@ -53,7 +67,7 @@ LEAD_TIME="${LEAD_TIME:-0}"
 OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}.npy}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
+BATCH_SIZE="${BATCH_SIZE:-2}"
 
 python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --weights-dir "${WEIGHTS_DIR}" \

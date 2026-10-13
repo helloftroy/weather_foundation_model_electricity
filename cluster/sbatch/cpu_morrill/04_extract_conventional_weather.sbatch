@@ -35,11 +35,27 @@ mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
-MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
+WEIGHTS_DIR="${WEIGHTS_DIR:-${SCRATCH_ROOT}/weights/prithvi.wxc.2300m.v1}"
+# GRID=global (default) runs on the full MERRA-2 grid, which is the only
+# setup in which the model performs properly (see sample_validation.py).
+# GRID=regional is the old 30-60N, 90-50W crop, kept for comparison.
+GRID="${GRID:-global}"
+if [ "${GRID}" = "global" ]; then
+  DAILY_DIR="${SCRATCH_ROOT}/data/merra2_global_${YEAR}_daily"
+  # 2020 ships ready-made with the model weights; use it unless we built our own.
+  if [ ! -d "${DAILY_DIR}" ] && [ "${YEAR}" = "2020" ]; then DAILY_DIR="${WEIGHTS_DIR}/merra-2"; fi
+  DEFAULT_CLIMATOLOGY="${WEIGHTS_DIR}/climatology"
+else
+  DAILY_DIR="${SCRATCH_ROOT}/data/merra2_${YEAR}_daily"
+  DEFAULT_CLIMATOLOGY="${SCRATCH_ROOT}/data/climatology_regional"
+fi
+echo "Grid: ${GRID}; daily MERRA-2 files: ${DAILY_DIR}"
+MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${DAILY_DIR}}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/conventional_weather_${YEAR}.parquet}"
 
 python "${REPO_ROOT}/src/merra2/extract_conventional_weather.py" \
   --merra2-surface-dir "${MERRA2_SURFACE_DIR}" \
+  --year "${YEAR}" \
   --out-parquet "${OUT_PARQUET}"
 
 echo "Job finished: $(date)"

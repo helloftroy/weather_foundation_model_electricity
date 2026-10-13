@@ -43,9 +43,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--merra2-surface-dir", type=Path, required=True)
     parser.add_argument("--out-parquet", type=Path, required=True)
+    parser.add_argument("--year", type=int, default=None, help="Only read files for this year")
     args = parser.parse_args()
 
-    files = sorted(args.merra2_surface_dir.glob("MERRA2_sfc_*.nc"))
+    files = sorted(args.merra2_surface_dir.glob(f"MERRA2_sfc_{args.year or ''}*.nc"))
     if not files:
         raise SystemExit(f"No MERRA2_sfc_*.nc files found under {args.merra2_surface_dir}")
     print(f"Reading {len(files)} daily surface files")
@@ -64,6 +65,10 @@ def main() -> None:
         lon = day_ds["lon"].values
 
         zone_idx = {z: (nearest_index(lat, la), nearest_index(lon, lo)) for z, (la, lo) in ZONE_CENTROIDS.items()}
+        # "regional mean" is always over 30-60N, 90-50W, whether the file is
+        # that crop or the whole globe.
+        box_lat = (lat >= 30.0) & (lat < 60.0)
+        box_lon = (lon >= -90.0) & (lon < -50.0)
 
         rows = []
         for ti, ts in enumerate(timestamps):
@@ -72,7 +77,7 @@ def main() -> None:
                 if var not in day_ds:
                     continue
                 arr = day_ds[var].values[ti]  # [lat, lon]
-                row[f"regional_mean_{var}"] = float(np.nanmean(arr))
+                row[f"regional_mean_{var}"] = float(np.nanmean(arr[np.ix_(box_lat, box_lon)]))
                 for zone, (yi, xi) in zone_idx.items():
                     row[f"{zone}_{var}"] = float(arr[yi, xi])
             rows.append(row)

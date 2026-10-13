@@ -2,7 +2,7 @@
 #SBATCH --job-name=merra2_2024
 #SBATCH --partition=service
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --time=48:00:00
 #SBATCH --output=logs/merra2_%j.out
 #SBATCH --error=logs/merra2_%j.err
@@ -33,11 +33,26 @@ export SCRATCH_ROOT="${SCRATCH_ROOT:-${REPO_ROOT}}"
 # NEW_PROJECT_MORRILL_CONTEXT.md).
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${SCRATCH_ROOT}/xdg_cache}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRATCH_ROOT}/mpl_cache}"
-mkdir -p logs "${SCRATCH_ROOT}/data/merra2_${YEAR}" "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
+mkdir -p logs "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}"
 
 source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda.sh}"
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
+# GRID=global (default) runs on the full MERRA-2 grid, which is the only
+# setup in which the model performs properly (see sample_validation.py).
+# GRID=regional is the old 30-60N, 90-50W crop, kept for comparison.
+GRID="${GRID:-global}"
+if [ "${GRID}" = "global" ]; then
+  OUT_DIR="${OUT_DIR:-${SCRATCH_ROOT}/data/merra2_global_${YEAR}}"
+  LAT_MIN="${LAT_MIN:--90.0}"; LAT_MAX="${LAT_MAX:-90.0}"; LON_MIN="${LON_MIN:--180.0}"; LON_MAX="${LON_MAX:-180.0}"
+  # Whole files are downloaded and cut down locally: reading a full global
+  # field through remote range requests was far too slow.
+  EXTRA_ARGS="--whole-file --tmp-dir ${SCRATCH_ROOT}/tmp/merra_raw_${SLURM_JOB_ID:-$$}"
+else
+  OUT_DIR="${OUT_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}}"
+  EXTRA_ARGS=""
+fi
+mkdir -p "${OUT_DIR}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31}"
 LAT_MIN="${LAT_MIN:-30.0}"
@@ -51,6 +66,6 @@ python "${REPO_ROOT}/src/merra2/download_merra2.py" \
   --start "${START}" --end "${END}" \
   --lat-min "${LAT_MIN}" --lat-max "${LAT_MAX}" \
   --lon-min "${LON_MIN}" --lon-max "${LON_MAX}" \
-  --out-dir "${SCRATCH_ROOT}/data/merra2_${YEAR}"
+  --out-dir "${OUT_DIR}" ${EXTRA_ARGS}
 
 echo "Job finished: $(date)"

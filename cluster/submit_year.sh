@@ -8,6 +8,9 @@
 #
 # SKIP_EMBEDDINGS=1 submits only the downloads, daily files, weather table
 # and price parsing (no GPU job, no final assembly).
+# SKIP_MERRA=1 skips the MERRA-2 download and daily-file build, for a year
+# whose daily files already exist (2020 ships with the model weights).
+# GRID=global (the default in every job) uses the full MERRA-2 grid.
 #
 # Downloads run one year at a time (ISO-NE rate-limits, and the service node
 # is slow), with each year's MERRA-2 fetched as four quarters in parallel.
@@ -42,27 +45,34 @@ for YEAR in "${YEARS[@]}"; do
   [[ "${YEAR}" =~ ^(19|20)[0-9]{2}$ ]] || { echo "Not a year: ${YEAR}" >&2; exit 1; }
   export YEAR
 
-  # The MERRA-2 download is the slow step, so each year is fetched as four
-  # quarters in parallel. Files are written under a temporary name and
-  # renamed, so the quarters cannot corrupt each other.
-  merra=""
-  for q in "01-01 03-31" "04-01 06-30" "07-01 09-30" "10-01 12-31"; do
-    set -- $q
-    id=$(submit "merra2_dl_${1%%-*}" "${prev_merra:+afterany:${prev_merra}}" $S/service/03_download_merra2_2024.sbatch "START=${YEAR}-$1,END=${YEAR}-$2")
-    merra="${merra:+${merra}:}${id}"
-  done
   demand=$(submit isone_demand_dl "${prev_isone:+afterany:${prev_isone}}" $S/service/04_download_isone_demand_2024.sbatch)
   lmp=$(submit isone_lmp_dl "afterany:${demand}" $S/service/05_download_isone_lmp_2024.sbatch)
-  prev_merra="${merra}"
   prev_isone="${lmp}"
-
-  daily=$(submit build_daily "afterok:${merra}" $S/cpu_morrill/02_build_daily_prithvi_files.sbatch)
-  weather=$(submit conv_weather "afterok:${daily}" $S/cpu_morrill/04_extract_conventional_weather.sbatch)
   parse_lmp=$(submit parse_lmp "afterok:${lmp}" $S/cpu_morrill/06_parse_isone_lmp.sbatch)
-  line="${YEAR}: merra2 ${merra}, demand ${demand}, lmp ${lmp}, daily ${daily}, weather ${weather}, parse_lmp ${parse_lmp}"
+
+  if [ "${SKIP_MERRA:-0}" = "1" ]; then
+    after_daily=""
+    line="${YEAR}: demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp} (MERRA-2 steps skipped)"
+  else
+    # The MERRA-2 download is the slow step, so each year is fetched as four
+    # quarters in parallel. Files are written under a temporary name and
+    # renamed, so the quarters cannot corrupt each other.
+    merra=""
+    for q in "01-01 03-31" "04-01 06-30" "07-01 09-30" "10-01 12-31"; do
+      set -- $q
+      id=$(submit "merra2_dl_${1%%-*}" "${prev_merra:+afterany:${prev_merra}}" $S/service/03_download_merra2_2024.sbatch "START=${YEAR}-$1,END=${YEAR}-$2")
+      merra="${merra:+${merra}:}${id}"
+    done
+    prev_merra="${merra}"
+    daily=$(submit build_daily "afterok:${merra}" $S/cpu_morrill/02_build_daily_prithvi_files.sbatch)
+    after_daily="afterok:${daily}"
+    line="${YEAR}: merra2 ${merra}, daily ${daily}, demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp}"
+  fi
+  weather=$(submit conv_weather "${after_daily}" $S/cpu_morrill/04_extract_conventional_weather.sbatch)
+  line="${line}, weather ${weather}"
 
   if [ "${SKIP_EMBEDDINGS:-0}" != "1" ]; then
-    emb=$(submit embeddings "afterok:${daily}" $S/gpu/02_extract_embeddings.sbatch)
+    emb=$(submit embeddings "${after_daily}" $S/gpu/02_extract_embeddings.sbatch)
     assemble=$(submit assemble "afterok:${emb}:${weather}:${demand}" $S/cpu_morrill/05_assemble_compact_dataset.sbatch)
     line="${line}, embeddings ${emb}, assemble ${assemble}"
   fi
