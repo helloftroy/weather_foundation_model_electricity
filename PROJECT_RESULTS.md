@@ -5,20 +5,79 @@ Setup and cluster commands live in `PROJECT_NOTES.md`.
 
 Last updated: 2026-10-09
 
-## Status (2026-10-13)
+## Status (2026-10-13, evening)
 
-| Model | Status |
+**All Prithvi results so far come from a flawed extraction and need
+rerunning.** See "Block-order bug" below. The calendar and weather results
+are unaffected.
+
+| Item | Status |
 |---|---|
-| Calendar only | Done, 2023 + 2024 |
-| Calendar + simple weather | Done, 2023 + 2024 |
-| Calendar + Prithvi (embedding pooled over the whole crop) | Done. Helps over calendar alone; clearly worse than simple weather. |
-| Calendar + weather + Prithvi (pooled) | Done. Slightly worse than weather alone. |
-| Prithvi with local (un-pooled) tokens | Done (exploratory). Better than pooled, still well behind simple weather; adds a small, consistent gain on top of weather. See "Local-token results". |
+| Calendar, calendar + weather | Valid. Three years (2022-2024) now available. |
+| Pooled Prithvi embedding | Computed with scrambled block geometry. Indicative only. |
+| Local patch tokens | **Invalid**: tokens were in the wrong quadrant three times in four. |
+| Nowcast vs day-old information | Done for weather and pooled Prithvi; see below. |
+| Decoder output, earlier encoder layers, raw input cube as baseline | Extraction updated to save them; not yet run. |
 
-Read "First Prithvi results" directly below first. The sections after it
-describe the original 2024-only baselines, which used an earlier version of
-the weather features, early stopping, and no Prithvi; they are kept for the
-method description and for the record.
+## Block-order bug (found 2026-10-13)
+
+- **What:** Prithvi groups its tokens into large blocks ("mask units"; our
+  crop has 2 x 2). With masking switched off, the model's mask generator
+  still shuffles those blocks into a random order for every sample before
+  the encoder. The extraction used the model's standard forward pass, with
+  settings copied from the repo's inference notebook, and inherited this.
+- **Effect on the encoder:** its shifted-window attention assumes the
+  blocks are in map order, so it mixed the wrong neighbours.
+- **Effect on saved outputs:** the crop-pooled embedding is an average, so
+  the shuffle does not change what was averaged, but the values were
+  produced by the mis-ordered encoder. The four quadrant embeddings and all
+  patch tokens were assigned to the wrong place three times in four.
+- **Evidence** (2024 tokens): anomaly similarity between adjacent patches
+  is 0.72 inside a block and 0.09 across a block boundary (0.04 for
+  far-apart patches); a patch compared with itself 3 hours later matches
+  closely about a quarter of the time and not at all otherwise.
+- **Fix:** `extract_embeddings.py` now forces map order, as the repo's own
+  `masked_inference()` does. Not yet rerun.
+- **Consequence:** the "Local-token results" section below should be
+  disregarded, including its conclusion that local temperature is hard to
+  read from a patch token. The pooled results in "First Prithvi results"
+  are kept as indicative.
+
+## Nowcast or forecast? Information-lag experiment (2026-10-13)
+
+Every result elsewhere in this file is a **nowcast with perfect
+information**: weather features and the Prithvi input are reanalysis for
+the same hour as the demand being predicted. That favours local weather,
+since demand at an hour is mostly a function of temperature at that hour.
+
+This experiment gives every model only a description of the atmosphere
+L hours before the demand hour (calendar features still describe the
+demand hour). Train 2022 + 2023, test 2024, 3,000 trees, one seed. Pooled
+Prithvi embedding (50 components), from the flawed extraction.
+Script: `local/experiment_information_lag.py`.
+
+Mean zone MAPE:
+
+| Inputs | Same hour (L = 0) | 24 h earlier | 48 h earlier |
+|---|---|---|---|
+| Calendar | 11.5% | 11.5% | 11.5% |
+| Calendar + weather | 4.85% | 7.12% | 8.66% |
+| Calendar + pooled Prithvi | 8.80% | 8.74% | 9.08% |
+| Calendar + weather + pooled Prithvi | 5.08% | 6.78% | 7.78% |
+
+- **Local weather loses value quickly as it ages** (4.9% to 7.1% to 8.7%).
+- **The pooled embedding barely changes** (8.8%, 8.7%, 9.1%): it describes
+  the large-scale state, which persists.
+- **The sign of Prithvi's contribution flips.** Added to weather it hurts
+  at the same hour (+0.2 points) and helps with older information (−0.3
+  points at 24 h, −0.9 at 48 h). At 48 h it is nearly as good alone as
+  weather alone.
+- **This is not a forecast comparison.** "Weather 24 h earlier" is a
+  persistence baseline. A real day-ahead test would give the weather arm
+  an actual 24-hour forecast, which is far better than yesterday's
+  weather, and would run Prithvi with a 24-hour lead time. Neither is done.
+- With three years, the same-hour weather baseline improves from 5.3%
+  (train 2023 only) to 4.85%.
 
 ## First Prithvi results (2026-10-12)
 
@@ -93,7 +152,7 @@ use the encoder's un-pooled patch tokens (each covers about 1 x 1.25
 degrees) at each zone's location. `extract_embeddings.py` now saves these
 for a New England box; it needs one more GPU pass per year.
 
-## Local-token results (2026-10-13)
+## Local-token results (2026-10-13) -- INVALID, see "Block-order bug"
 
 Tests the explanation above. The encoder's un-pooled patch tokens (one per
 1 x 1.25 degree patch) were saved for an 8 x 7 patch box over New England,
