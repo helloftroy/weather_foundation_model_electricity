@@ -10,21 +10,23 @@ the climatology the model is handed:
 time 0 the target equals the model's own input, so a working model should
 score close to 1.
 
-The same samples are run several ways, to separate out which of our choices
-(if any) breaks the model:
+The same samples are run on crops of increasing size around New England,
+to find how much surrounding area the model needs to work properly:
 
-    global, shuffled blocks   the repo's standard forward pass (what its
-                              inference notebook does, and what our runs did
-                              before 2026-10-13)
-    global, map order         mask units kept in map order
-    global, map order,        the same with the encoder's and decoder's
-      no window shift         shifted-window attention switched off
-    regional crop, map order  OUR SETUP: the same samples cropped to the
-                              30-59.5N, 90-50.6W box, 2 x 2 mask units
-    regional crop, shuffled   our setup before the block-order fix
+    2 x 2 mask units   30-60N, 90-50W (the crop all runs used up to 2026-10-13)
+    4 x 4              15-75N, 110-30W
+    4 x 6              15-75N, 130-10W
+    6 x 8              0-90N, 150W-10E
+    12 x 18            the whole globe (what the model was trained on)
 
-Scores are reported over the whole grid where that applies, and over our
-box in every case so the rows are comparable.
+Every row is scored inside the same two areas so they are comparable: the
+original 2 x 2 box, and a small New England box at its centre (where the
+tokens we use come from; crop edges are far from it in the larger crops).
+
+Findings so far (2026-10-13): on the global grid skill is 0.99 at lead 0 and
+0.96 at lead 6 h; on the 2 x 2 crop 0.89 and 0.49. The order of the mask
+units (shuffled as in the repo's default forward pass, or map order) makes
+no difference to skill; switching off the shifted-window attention hurts.
 
 Uses only the repo's own loader and model code, on data already downloaded
 by cluster/sbatch/service/01_setup_prithvi.sbatch.
@@ -56,7 +58,17 @@ LEVELS = [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0
 GLOBAL_PADDING = {"level": [0, 0], "lat": [0, -1], "lon": [0, 0]}  # matches the official demo: trims the duplicate 361st lat row
 
 
-BOX = (30.0, 59.5, -90.0, -50.625)  # lat_min, lat_max, lon_min, lon_max of our regional crop
+# Crops are given as (name, first lat row, lat rows, first lon column, lon columns)
+# on the 360 x 576 global grid (lat = -90 + 0.5 * row, lon = -180 + 0.625 * column).
+# Rows and columns must be multiples of the mask unit (30 x 32 pixels).
+CROPS = [
+    ("2 x 2 units (30-60N, 90-50W)", 240, 60, 144, 64),
+    ("4 x 4 units (15-75N, 110-30W)", 210, 120, 112, 128),
+    ("4 x 6 units (15-75N, 130-10W)", 210, 120, 80, 192),
+    ("6 x 8 units (0-90N, 150W-10E)", 180, 180, 48, 256),
+    ("12 x 18 units (global)", 0, 360, 0, 576),
+]
+SCORE_AREAS = {"2 x 2 box": (240, 60, 144, 64), "New England": (260, 16, 168, 14)}
 
 
 def build_model(p, scalers, n_lats_px, n_lons_px):
@@ -131,7 +143,6 @@ class Score:
             "vertical (median of 140)": float(skill[n_sfc:].median()),
             "T2M skill": float(skill[i]),
             "T2M mean |err| (sd)": self.abs_t2m / self.n_px,
-            "worst channel": float(skill.min()),
         }
 
 
@@ -181,62 +192,40 @@ def main() -> None:
         lons = np.asarray(dataset.lons)
         print(f"Lead {lead} h: {len(batches[lead])} samples of {len(dataset)}, grid {batches[lead][0]['x'].shape[-2]} x {batches[lead][0]['x'].shape[-1]}", flush=True)
 
-    rows = np.where((lats >= BOX[0]) & (lats <= BOX[1]))[0]
-    cols = np.where((lons >= BOX[2]) & (lons <= BOX[3]))[0]
-    r, c = slice(int(rows[0]), int(rows[-1]) + 1), slice(int(cols[0]), int(cols[-1]) + 1)
-    print(f"Our box inside the global grid: {len(rows)} x {len(cols)} pixels, lat {lats[rows[0]]}..{lats[rows[-1]]}, lon {lons[cols[0]]}..{lons[cols[-1]]}", flush=True)
-    if (len(rows), len(cols)) != (60, 64):
-        raise SystemExit("Box does not come out as 60 x 64 pixels; check the sample grid.")
-
-    def crop(batch):
-        return {k: (v[..., r, c] if isinstance(v, torch.Tensor) and v.ndim >= 3 else v) for k, v in batch.items()}
-
-    def run(model, lead, regional: bool) -> tuple[Score, Score]:
-        whole, box = Score(p["in_channels"]), Score(p["in_channels"])
-        for cpu_batch in batches[lead]:
-            b = crop(cpu_batch) if regional else cpu_batch
-            b = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in b.items()}
-            with torch.no_grad():
-                out = model(b)
-            if not torch.isfinite(out).all():
-                raise SystemExit("Model output is not finite.")
-            if regional:
-                box.add(out, b["y"], b["climate"], t2m_sigma)
-            else:
-                whole.add(out, b["y"], b["climate"], t2m_sigma)
-                box.add(out[..., r, c], b["y"][..., r, c], b["climate"][..., r, c], t2m_sigma)
-        return whole, box
+    print("Score areas: " + "; ".join(f"{k}: lat {lats[r0]}..{lats[r0 + nr - 1]}, lon {lons[c0]}..{lons[c0 + nc - 1]}" for k, (r0, nr, c0, nc) in SCORE_AREAS.items()), flush=True)
 
     results = []
-    for regional, n_lat, n_lon in ((False, len(lats), len(lons)), (True, 60, 64)):
-        model = build_model(p, scalers, n_lat, n_lon)
+    for name, r0, nr, c0, nc in CROPS:
+        regional = (nr, nc) != (len(lats), len(lons))
+        model = build_model(p, scalers, nr, nc)
         load_weights(model, state_dict, regional)
         model = model.to(device).eval()
-        configs = ([("global, shuffled blocks (repo default)", False, True), ("global, map order", True, True), ("global, map order, no window shift", True, False)]
-                   if not regional else
-                   [("REGIONAL crop, map order (our setup)", True, True), ("regional crop, shuffled (our old setup)", False, True), ("regional crop, map order, no window shift", True, False)])
-        for name, ordered, shift in configs:
-            configure(model, ordered, shift)
-            for lead in args.lead_times:
-                torch.manual_seed(0)
-                whole, box = run(model, lead, regional)
-                results.append((name, lead, "whole grid" if not regional else None, whole, box))
-                s = box.summary()
-                print(f"  [{name}] lead {lead} h, in our box: surface {s['surface (median of 20)']:.3f}, vertical {s['vertical (median of 140)']:.3f}, T2M {s['T2M skill']:.3f}", flush=True)
+        configure(model, ordered=True, shift=True)
+        for lead in args.lead_times:
+            scores = {k: Score(p["in_channels"]) for k in SCORE_AREAS}
+            for cpu_batch in batches[lead]:
+                b = {k: (v[..., r0:r0 + nr, c0:c0 + nc].to(device) if isinstance(v, torch.Tensor) and v.ndim >= 3 else (v.to(device) if isinstance(v, torch.Tensor) else v))
+                     for k, v in cpu_batch.items()}
+                with torch.no_grad():
+                    out = model(b)
+                if not torch.isfinite(out).all():
+                    raise SystemExit("Model output is not finite.")
+                for k, (a0, an, b0, bn) in SCORE_AREAS.items():
+                    sl = (Ellipsis, slice(a0 - r0, a0 - r0 + an), slice(b0 - c0, b0 - c0 + bn))
+                    scores[k].add(out[sl], b["y"][sl], b["climate"][sl], t2m_sigma)
+            results.append((name, lead, {k: s.summary() for k, s in scores.items()}))
+            s = results[-1][2]["New England"]
+            print(f"  [{name}] lead {lead} h, New England: surface {s['surface (median of 20)']:.3f}, vertical {s['vertical (median of 140)']:.3f}, T2M {s['T2M skill']:.3f}", flush=True)
         del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-    print("\nSkill relative to climatology (1 = perfect, 0 = no better than climatology), scored inside our box:")
-    print(f"{'configuration':44s} {'lead':>5s} {'surface':>8s} {'vertical':>9s} {'T2M':>7s} {'T2M |err| sd':>13s} {'worst ch.':>10s}")
-    for name, lead, _, whole, box in results:
-        s = box.summary()
-        print(f"{name:44s} {lead:4d}h {s['surface (median of 20)']:8.3f} {s['vertical (median of 140)']:9.3f} {s['T2M skill']:7.3f} {s['T2M mean |err| (sd)']:13.4f} {s['worst channel']:10.2f}")
-    print("\nSame, scored over the whole globe (global runs only):")
-    for name, lead, tag, whole, box in results:
-        if tag:
-            s = whole.summary()
-            print(f"{name:44s} {lead:4d}h {s['surface (median of 20)']:8.3f} {s['vertical (median of 140)']:9.3f} {s['T2M skill']:7.3f} {s['T2M mean |err| (sd)']:13.4f} {s['worst channel']:10.2f}")
+    for area in SCORE_AREAS:
+        print(f"\nSkill relative to climatology (1 = perfect, 0 = no better than climatology), scored in: {area}")
+        print(f"{'crop given to the model':34s} {'lead':>5s} {'surface':>8s} {'vertical':>9s} {'T2M':>7s} {'T2M |err| sd':>13s}")
+        for name, lead, summ in results:
+            s = summ[area]
+            print(f"{name:34s} {lead:4d}h {s['surface (median of 20)']:8.3f} {s['vertical (median of 140)']:9.3f} {s['T2M skill']:7.3f} {s['T2M mean |err| (sd)']:13.4f}")
 
 
 if __name__ == "__main__":
