@@ -43,7 +43,13 @@ MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_da
 MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${SCRATCH_ROOT}/data/merra2_${YEAR}_daily}"
 CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${SCRATCH_ROOT}/data/climatology_regional}"
 OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}.parquet}"
-# Un-pooled patch tokens over New England (about 0.85 GB per year).
+# Extra encoder taps, each another ~0.85 GB per year: "embed" and/or block
+# indices that are multiples of 4, e.g. LAYERS="embed 0 12". Empty = none.
+LAYERS="${LAYERS:-}"
+# Hours ahead the model is asked to describe (0 = the embedding's own time).
+LEAD_TIME="${LEAD_TIME:-0}"
+# Un-pooled patch tokens over New England (about 0.85 GB per year), plus the
+# model's normalised inputs (~0.2 GB) and decoder output for the same box.
 OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}.npy}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
@@ -58,6 +64,8 @@ python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --start "${START}" --end "${END}" \
   --batch-size "${BATCH_SIZE}" \
   --out-parquet "${OUT_PARQUET}" \
-  --out-tokens "${OUT_TOKENS}"
+  --out-tokens "${OUT_TOKENS}" \
+  --lead-time "${LEAD_TIME}" \
+  --layers ${LAYERS}
 
 echo "Job finished: $(date)"

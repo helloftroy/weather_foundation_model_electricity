@@ -131,6 +131,10 @@ def main() -> None:
     parser.add_argument("--out-parquet", type=Path, required=True)
     parser.add_argument("--out-tokens", type=Path, default=None,
                         help="Also save the un-pooled patch tokens inside --token-box to this .npy (float16), with a .json sidecar")
+    parser.add_argument("--layers", nargs="*", default=[],
+                        help="Also save patch tokens from inside the encoder: 'embed' (before any attention) and/or block "
+                             "indices that are multiples of 4 (0 = after the first local-attention block, before any "
+                             "global mixing; the final block is always saved). Each adds a file the size of --out-tokens.")
     parser.add_argument("--token-box", type=float, nargs=4, default=[40.0, 48.0, -75.0, -66.25],
                         metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="Patches whose centres fall in this box are saved (default: New England)")
@@ -259,12 +263,41 @@ def main() -> None:
     model = model.to(device)
     model.eval()
 
+    # Keep the mask units in map order. With no masking, the model's own
+    # mask generator still SHUFFLES the mask units into a random order for
+    # every sample before the encoder (model.generate_mask -> _gen_mask_global).
+    # The encoder output then comes back in that random order, and the
+    # encoder's shifted-window attention, which assumes map order, mixes the
+    # wrong neighbours. Runs before 2026-10-13 had this: pooled embeddings
+    # were computed with scrambled geometry and the saved patch tokens sat in
+    # the wrong quadrant three times out of four. The repo's masked_inference()
+    # uses map order when no mask is given; do the same here.
+    def ordered_mask(sizes):
+        idx = model._global_idx.view(1, -1).expand(sizes[0], -1)
+        return idx[:, :0], idx
+
+    model.generate_mask = ordered_mask
+
     captured = {}
 
     def hook(_module, _inp, out):
         captured["x_encoded"] = out
 
     model.encoder.register_forward_hook(hook)
+
+    # Optional taps inside the encoder. Only blocks 0, 4, 8, ... are offered:
+    # those are local-attention blocks whose output is in the same token
+    # layout as the final output (other blocks are transposed and/or have the
+    # window shift applied).
+    n_blocks_total = len(model.encoder.lgl_block.transformers)
+    for name in args.layers:
+        if name == "embed":
+            model.encoder.register_forward_pre_hook(lambda _m, inp: captured.__setitem__("embed", inp[0]))
+        elif name.isdigit() and int(name) % 4 == 0 and int(name) < n_blocks_total - 1:
+            model.encoder.lgl_block.transformers[int(name)].register_forward_hook(
+                lambda _m, _i, out, name=name: captured.__setitem__(name, out))
+        else:
+            raise SystemExit(f"--layers: '{name}' is not 'embed' or a multiple of 4 below {n_blocks_total - 1}.")
 
     loader = DataLoader(
         dataset,
@@ -295,6 +328,20 @@ def main() -> None:
         tokens_out = np.lib.format.open_memmap(args.out_tokens, mode="w+", dtype=np.float16, shape=(n_samples, r1 - r0, c1 - c0, embed_dim))
         print(f"Saving patch tokens: {r1 - r0} x {c1 - c0} patches, lat centres {lat_c[r0]:.2f}..{lat_c[r1 - 1]:.2f}, "
               f"lon centres {lon_c[c0]:.3f}..{lon_c[c1 - 1]:.3f} ({tokens_out.nbytes / 1e9:.2f} GB)")
+        stem = args.out_tokens.with_suffix("")
+        layer_out = {name: np.lib.format.open_memmap(f"{stem}_layer{name}.npy", mode="w+", dtype=np.float16, shape=tokens_out.shape)
+                     for name in args.layers}
+        # The same box in pixels, for the model's inputs and its reconstruction.
+        px = (slice(None), slice(None), slice(r0 * patch_lat, r1 * patch_lat), slice(c0 * patch_lon, c1 * patch_lon))
+        n_px_lat, n_px_lon = (r1 - r0) * patch_lat, (c1 - c0) * patch_lon
+        n_sfc = len(SURFACE_VARS)
+        inputs_out = np.lib.format.open_memmap(f"{stem}_inputs.npy", mode="w+", dtype=np.float16, shape=(n_samples, p["in_channels"], n_px_lat, n_px_lon))
+        recon_out = np.lib.format.open_memmap(f"{stem}_recon_sfc.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_sfc, n_px_lat, n_px_lon))
+        climate_out = np.lib.format.open_memmap(f"{stem}_climate_sfc.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_sfc, n_px_lat, n_px_lon))
+        norm_mu = model.input_scalers_mu.reshape(1, -1, 1, 1)
+        norm_sd = model.input_scalers_sigma.reshape(1, -1, 1, 1) + model.input_scalers_epsilon
+        print(f"Also saving: normalised inputs {inputs_out.shape}, decoder output and climatology for the {n_sfc} surface variables, "
+              f"encoder layers {args.layers or 'none'}")
     local_lat, local_lon = model.local_shape_mu
 
     global_out = np.empty((n_samples, embed_dim), dtype=np.float32)
@@ -320,7 +367,7 @@ def main() -> None:
             if idx == 0:
                 check_normalised_inputs(batch["x"], model, n_levels=len(LEVELS))
 
-            model(batch)  # decoder output discarded; we only need the hook capture
+            model_out = model(batch)  # [B, channels, lat, lon], physical units
             x_encoded = captured["x_encoded"]  # [B, n_global_mu, n_local_mu, embed_dim]
             if idx == 0:
                 print(f"First-batch embedding magnitude: mean |value| {float(x_encoded.abs().mean()):.3g}, max {float(x_encoded.abs().max()):.3g}")
@@ -331,7 +378,27 @@ def main() -> None:
             global_out[idx:idx + b] = x_encoded.mean(dim=(1, 2)).cpu().numpy()
             region_out[idx:idx + b] = x_encoded.mean(dim=2).cpu().numpy()
             if tokens_out is not None:
-                tokens_out[idx:idx + b] = patch_grid(x_encoded, n_global_lat, n_global_lon, local_lat, local_lon)[:, r0:r1, c0:c1].to(torch.float16).cpu().numpy()
+                def boxed(tok):
+                    return patch_grid(tok, n_global_lat, n_global_lon, local_lat, local_lon)[:, r0:r1, c0:c1].to(torch.float16).cpu().numpy()
+
+                def f16(z):  # normalised fields; clamp so float16 cannot overflow on heavy-tailed variables
+                    return z.clamp(-6e4, 6e4).to(torch.float16).cpu().numpy()
+
+                tokens_out[idx:idx + b] = boxed(x_encoded)
+                for name, arr in layer_out.items():
+                    arr[idx:idx + b] = boxed(captured[name])
+                x_now = (batch["x"][:, -1] - norm_mu) / norm_sd          # inputs at the embedding's own time
+                recon = (model_out - norm_mu) / norm_sd
+                inputs_out[idx:idx + b] = f16(x_now[px])
+                recon_out[idx:idx + b] = f16(recon[px][:, :n_sfc])
+                climate_out[idx:idx + b] = f16(((batch["climate"] - norm_mu) / norm_sd)[px][:, :n_sfc])
+                if idx == 0:
+                    target = (batch["y"] - norm_mu) / norm_sd
+                    i_t2m = SURFACE_VARS.index("T2M")
+                    print(f"First batch, T2M in the box (standard deviations): decoder output vs target, mean |difference| "
+                          f"{float((recon - target)[px][:, i_t2m].abs().mean()):.3f}; input at t vs target "
+                          f"{float((x_now - target)[px][:, i_t2m].abs().mean()):.3f}; climatology vs target "
+                          f"{float(((batch['climate'] - norm_mu) / norm_sd - target)[px][:, i_t2m].abs().mean()):.3f}")
             idx += b
 
             if idx % 100 < b:
@@ -350,9 +417,22 @@ def main() -> None:
     print(f"Wrote {len(df)} rows x {len(df.columns)} cols to {args.out_parquet}")
 
     if tokens_out is not None:
-        tokens_out.flush()
+        for arr in [tokens_out, inputs_out, recon_out, climate_out, *layer_out.values()]:
+            arr.flush()
         meta = {
-            "layout": "[time, lat_patch, lon_patch, embed_dim], float16; encoder output tokens, un-pooled",
+            "layout": "[time, lat_patch, lon_patch, embed_dim], float16; encoder output tokens, un-pooled, mask units in map order",
+            "block_order": "map",
+            "layers": {name: f"{stem.name}_layer{name}.npy" for name in args.layers},
+            "fields": {
+                "inputs": {"file": f"{stem.name}_inputs.npy", "layout": "[time, channel, lat_pixel, lon_pixel], normalised with the model's input mean and sigma, at the embedding's own time",
+                           "channels": list(SURFACE_VARS) + [f"{v}_{int(l)}" for v in VERTICAL_VARS for l in LEVELS]},
+                "recon_sfc": {"file": f"{stem.name}_recon_sfc.npy", "layout": "decoder output, surface channels only, same normalisation", "channels": list(SURFACE_VARS)},
+                "climate_sfc": {"file": f"{stem.name}_climate_sfc.npy", "layout": "climatology given to the model for the target time, surface channels, same normalisation", "channels": list(SURFACE_VARS)},
+            },
+            "pixel_lats": np.asarray(dataset.lats, dtype=np.float64)[r0 * patch_lat:r1 * patch_lat].tolist(),
+            "pixel_lons": np.asarray(dataset.lons, dtype=np.float64)[c0 * patch_lon:c1 * patch_lon].tolist(),
+            "input_time_hours": args.input_time,
+            "lead_time_hours": args.lead_time,
             "timestamps": [pd.Timestamp(ts).isoformat() for ts in timestamps],
             "patch_lat_centers": lat_c[r0:r1].tolist(),
             "patch_lon_centers": lon_c[c0:c1].tolist(),
