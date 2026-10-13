@@ -107,7 +107,17 @@ def open_collection_day(data_dir: Path, collection: str, day: pd.Timestamp) -> x
         files = sorted(coll_dir.glob("*.nc"))
     if not files:
         return None
-    ds = xr.open_mfdataset(files, combine="by_coords", decode_times=True)
+    # Open each file on its own and cut it to the levels we keep BEFORE
+    # joining them: some files hold all 72 model levels (older downloads)
+    # and some only the 14 Prithvi uses, and the two cannot be combined as
+    # they are.
+    parts = []
+    for f in files:
+        part = xr.open_dataset(f, decode_times=True)
+        if "lev" in part.dims:
+            part = part.sel(lev=LEVELS_AS_STORED)
+        parts.append(part)
+    ds = parts[0] if len(parts) == 1 else xr.concat(parts, dim="time").sortby("time")
     day_start = day - pd.Timedelta(hours=1)  # previous day's 23:30, for centring 00:00
     day_end = day + pd.Timedelta(hours=23, minutes=59)
     if "time" in ds.dims:
