@@ -56,15 +56,20 @@ echo "Grid: ${GRID}; daily MERRA-2 files: ${DAILY_DIR}"
 MERRA2_SURFACE_DIR="${MERRA2_SURFACE_DIR:-${DAILY_DIR}}"
 MERRA2_VERTICAL_DIR="${MERRA2_VERTICAL_DIR:-${DAILY_DIR}}"
 CLIMATOLOGY_DIR="${CLIMATOLOGY_DIR:-${DEFAULT_CLIMATOLOGY}}"
-OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}.parquet}"
 # Extra encoder taps, each another ~0.85 GB per year: "embed" and/or block
 # indices that are multiples of 4, e.g. LAYERS="embed 0 12". Empty = none.
 LAYERS="${LAYERS:-}"
 # Hours ahead the model is asked to describe (0 = the embedding's own time).
+# Each sample is issued at its timestamp (the latest input time) and
+# describes timestamp + LEAD_TIME. A non-zero lead gets its own file names,
+# so it never overwrites the lead-0 outputs.
 LEAD_TIME="${LEAD_TIME:-0}"
+SUFFIX=""
+if [ "${LEAD_TIME}" != "0" ]; then SUFFIX="_lead${LEAD_TIME}"; fi
+OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}${SUFFIX}.parquet}"
 # Un-pooled patch tokens over New England (about 0.85 GB per year), plus the
 # model's normalised inputs (~0.2 GB) and decoder output for the same box.
-OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}.npy}"
+OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}${SUFFIX}.npy}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
 BATCH_SIZE="${BATCH_SIZE:-2}"

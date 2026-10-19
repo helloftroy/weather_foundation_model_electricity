@@ -797,3 +797,124 @@ Demand, mean zone MAPE, mean of 2 seeds (seeds agree to within 0.3 points):
   100-tree patience has stopped too early in several runs. The headline
   tables have not been rerun; the plan is to use a fixed 3,000 trees when
   everything is rerun on the rebuilt data.
+
+# 2020 on the working model: global grid, tokens in map order (2026-10-19)
+
+The first year run the way the model needs: the whole globe (360 x 576), so
+nothing is degraded by a regional crop, and the mask-unit order fixed, so
+each saved token sits where the map says it does. All earlier embedding
+results (sections above) used the cropped, degraded model and should be read
+in that light. 2020 is a pandemic year, and everything here is within one
+year.
+
+Files: `prithvi_tokens_ne_2020*.npy` and `.json` (the sidecar says
+`block_order: map`, `model_grid: 360 x 576`). There are 2,916 three-hourly
+times; 12 are missing (about one and a half days, matching the day missing
+from NASA's 2020 set). Every file was checked for complete length, NaNs and
+blank rows.
+
+## Setup
+
+- **Zone area:** each zone is the 3 x 3 patches (about 3 x 3.75 degrees)
+  around its reference point. Tokens are averaged over those 9 patches; the
+  input, decoder and climatology fields are averaged over the matching 6 x 6
+  grid cells.
+- **Embedding time:** lead time 0 h. The model sees MERRA-2 at the target
+  time and 6 h earlier, so this is still a nowcast with perfect knowledge.
+- **Token sources:** `embed` (patch embedding, before any transformer
+  block), encoder block 0, block 12, and the final encoder output.
+- **Raw inputs:** the model's own 160 normalised input channels at the
+  target time, for the same area. This is the "is the encoder adding
+  anything?" baseline.
+- **Principal components:** tokens and raw inputs are each reduced to 50
+  components, fitted on training times only.
+- **Script:** `local/analyze_global_year.py`. Outputs are in
+  `results/global_2020/` (`temperature_probe.csv`, `demand_comparison.csv`).
+
+## Temperature probe
+
+Target: each zone's own MERRA-2 2 m temperature at its nearest grid cell
+(the same number the weather baseline uses). Method: ridge regression, a
+straight-line fit with a light penalty; one fit per zone. Train on days 1-18
+of each month, test on day 22 onward. Scores are averaged over the 8 zones.
+
+| Source | Dimensions | RMSE (K) | R² |
+|---|---|---|---|
+| Raw inputs, all 160 channels | 160 | **0.89** | 0.992 |
+| Raw inputs, T2M channel only | 1 | 1.27 | 0.983 |
+| Tokens: embed | 50 PCs | 1.31 | 0.983 |
+| Tokens: block 0 | 50 PCs | 1.27 | 0.984 |
+| Tokens: block 12 | 50 PCs | 1.74 | 0.971 |
+| Tokens: final | 50 PCs | 1.74 | 0.971 |
+| Decoder output, T2M channel | 1 | 1.32 | 0.982 |
+| Climatology given to the model, T2M | 1 | 4.06 | 0.841 |
+
+- **Local temperature is clearly in the tokens at every depth** (R² of 0.97
+  or more, against 0.84 for climatology). The token layout is right: zone
+  temperature reads out of the zone's own patches.
+- **It fades with depth.** The early layers match the raw temperature
+  channel. By block 12 the error is about 40% higher, and the final layer is
+  no better. This fits an encoder that mixes in wider context as it goes.
+- **The decoder reconstructs temperature almost exactly.** Its T2M differs
+  from the true input by 0.007 sd on average, against 0.13 sd for
+  climatology. As a temperature predictor it is about as good as the true
+  temperature field itself. So the information is not lost inside the model;
+  it is spread across many token directions, and 50 components of one
+  layer do not capture all of it.
+- **The raw input cube beats every token layer.** For recovering
+  temperature, the encoder adds nothing over what it was given. Caveat: the
+  inputs include the target time itself, so the raw cube nearly contains the
+  answer. Most of its remaining 0.9 K is the difference between a 6 x 6-cell
+  area mean and the single cell the target is taken from.
+
+## Demand
+
+Same CatBoost setup as before: one pooled model with `zone` as a
+categorical feature, fixed 3,000 trees, learning rate 0.05, depth 6, seed 7.
+The score is mean zone MAPE.
+
+- **Blocked split:** train days 1-18 of each month, test day 22 onward.
+- **Chronological split:** train January-August, test October-December.
+
+| Features | Blocked | Vermont | Chronological | Vermont |
+|---|---|---|---|---|
+| Calendar | 10.47% | 17.0% | 11.75% | 19.3% |
+| Calendar + weather | 4.93% | 8.4% | **8.36%** | 11.7% |
+| Calendar + raw inputs | 5.39% | 7.8% | 10.40% | 15.7% |
+| Calendar + tokens: block 0 | 5.49% | 7.9% | 15.00% | 16.8% |
+| Calendar + tokens: block 12 | 5.70% | 8.1% | 16.34% | 18.7% |
+| Calendar + tokens: final | 5.49% | 7.8% | 16.38% | 17.7% |
+| Calendar + weather + tokens: final | **4.31%** | 6.7% | 10.44% | 14.3% |
+| Calendar + weather + raw inputs | 4.32% | 6.4% | 9.46% | 12.6% |
+
+The `embed` layer was still copying when this ran and is not in the demand
+table.
+
+- **Blocked split** (test days surrounded by training days from the same
+  season): tokens alone come close to weather (5.5% against 4.9%). Adding
+  them to weather helps (4.31%). But the raw input cube does the same
+  (4.32%), so the gain comes from the extra weather information in the
+  model's inputs, not from anything the encoder computes. Tokens alone are
+  better than weather alone in Vermont (7.8% against 8.4%), and so are raw
+  inputs.
+- **Chronological split** (autumn, a season not in training): the
+  high-dimensional features hurt badly. Tokens alone (15-16%) are worse
+  than calendar alone (11.75%), and adding tokens to weather makes it worse
+  (8.36% to 10.44%). Raw inputs also hurt, but less (9.46%). With 50
+  components there are many ways for a tree model to latch on to
+  season-specific patterns that do not carry over to new conditions.
+  Six plain weather numbers generalise far better.
+- **No sign so far that the encoder adds value over its own inputs** for
+  this nowcast. The question that remains open is the one the encoder could
+  win: a real forecast (`LEAD_TIME` > 0), where the raw inputs are stale and
+  the model has to supply what happens next.
+
+## Still to do (2020 onward)
+
+- Run 2021-2024 the same way and repeat with training on earlier years
+  (year-ahead), which is the setting that matters.
+- Forecast test: embeddings with `LEAD_TIME=24`, compared against raw
+  inputs from 24 h earlier and against actual weather forecasts.
+- Fewer components (for example 5-10) for tokens and raw inputs on the
+  chronological split, to check whether the failure is simply too many
+  features.
