@@ -909,6 +909,50 @@ table.
   win: a real forecast (`LEAD_TIME` > 0), where the raw inputs are stale and
   the model has to supply what happens next.
 
+## Hub price, 2020, lead 0
+
+Day-ahead hub price, one row per hour, no gas prices. Features are
+system-level:
+- weather: the eight zones' values averaged with fixed weights, each zone's
+  share of annual demand;
+- tokens and raw inputs: averaged over the whole 8 x 7 patch box, then 50
+  principal components;
+- decoder: the box mean of its 20 surface channels.
+
+Same splits and fixed 3,000 trees as the demand models, one seed. Earlier
+runs put seed-to-seed spread at about $0.5, so smaller differences are noise.
+
+| Features | Blocked: MAE | R² | Chronological: MAE | R² |
+|---|---|---|---|---|
+| Calendar | $9.17 | -1.61 | $15.16 | -0.66 |
+| Calendar + weather | $5.66 | 0.10 | $14.44 | -0.50 |
+| Calendar + raw inputs | $5.79 | 0.14 | $12.83 | -0.33 |
+| Calendar + tokens: embed | $5.38 | 0.32 | **$11.46** | -0.12 |
+| Calendar + tokens: block 0 | $5.86 | 0.18 | $11.77 | -0.16 |
+| Calendar + tokens: block 12 | $5.59 | 0.24 | $12.41 | -0.28 |
+| Calendar + tokens: final | $5.41 | 0.29 | $12.42 | -0.27 |
+| Calendar + decoder output | $6.03 | -0.22 | $14.01 | -0.45 |
+| Calendar + weather + tokens: final | $5.21 | 0.30 | $13.04 | -0.34 |
+| Calendar + weather + raw inputs | $5.01 | 0.35 | $13.01 | -0.32 |
+| Calendar + weather + system demand | **$4.87** | 0.35 | $12.44 | -0.15 |
+
+Test-period price: blocked mean $23.35 (sd $10.14); chronological
+October-December mean $30.06 (sd $17.25).
+
+- **2020 price is hard to model from weather.** Prices were low and
+  variable (pandemic demand, cheap gas until a late-year rise). The best
+  R² is 0.35, against 0.56 for the 2024 blocked split.
+- **Chronological split:** every model does worse than simply predicting
+  the test-period mean (R² below 0). The autumn rise in price is not in
+  anything the models are given; it most likely follows gas prices, which
+  are deliberately left out. Tokens are the least bad, but "less wrong"
+  is not a useful result here.
+- **Blocked split:** tokens alone beat weather alone (about $5.4 against
+  $5.7; R² 0.3 against 0.1). Weather + raw inputs ($5.01) and weather +
+  system demand ($4.87) are about equal, and all are within roughly $0.5
+  of each other. This is no clear evidence that the encoder adds value
+  over its inputs for price.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
