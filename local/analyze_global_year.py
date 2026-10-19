@@ -142,7 +142,7 @@ def main() -> None:
     parser.add_argument("--tokens-dir", type=Path, default=None, help="Where prithvi_tokens_ne_YEAR* are (default: DATA_DIR/compact)")
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--iterations", type=int, default=3000)
-    parser.add_argument("--parts", nargs="+", default=["probe", "demand", "price"], choices=["probe", "demand", "price"])
+    parser.add_argument("--parts", nargs="+", default=["probe", "demand", "price"], choices=["probe", "demand", "price", "readout"])
     parser.add_argument("--price-market", default="dayahead", choices=["dayahead", "realtime"])
     args = ARGS = parser.parse_args()
     c = args.data_dir / "compact"
@@ -311,6 +311,57 @@ def main() -> None:
                                 "rmse": float(np.sqrt((err ** 2).mean()))})
                 print(f"  {name:55s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
                 pd.DataFrame(results).to_csv(args.out_dir / f"price_{args.price_market}_comparison.csv", index=False)
+    # ---------------- Part 4: where to read the tokens from ----------------
+    # Final-layer tokens only, each read out four ways for every zone.
+    if "readout" in args.parts:
+        a = np.load(layers["final"], mmap_mode="r")
+        nearest = {z: (int(np.abs(lat_c - la).argmin()), int(np.abs(lon_c - lo).argmin())) for z, (la, lo) in ZONES.items()}
+        box = box_tokens(layers["final"])
+        readouts = {
+            "single nearest patch": np.stack([np.asarray(a[:, i, j], dtype=np.float32) for i, j in nearest.values()], axis=1),
+            "zone 3 x 3 patches": per_zone_tokens(layers["final"], windows),
+            "New England box mean (same for all zones)": np.repeat(box[:, None], len(zn), axis=1),
+        }
+        for cand in [args.data_dir / f"prithvi_embeddings_{args.year}{'_lead' + str(args.lead) if args.lead else ''}.parquet",
+                     c / f"prithvi_embeddings_{args.year}{'_lead' + str(args.lead) if args.lead else ''}.parquet"]:
+            if cand.exists():
+                pooled = pd.read_parquet(cand)
+                pooled = pooled.set_index(pd.to_datetime(pooled["timestamp"])).drop(columns="timestamp").reindex(issue).to_numpy(np.float32)
+                readouts["30-60N, 90-50W pooled vector (same for all zones)"] = np.repeat(pooled[:, None], len(zn), axis=1)
+                break
+        print("\nNearest patch per zone (row, col):", nearest)
+        rows = [{"readout": n, **dict(zip(["zone_T2M_RMSE_K_mean", "zone_T2M_R2_mean"],
+                                          np.mean([probe(pca(V, train_t, 50)[0][:, k], T2M[:, k], train_t, test_t) for k in range(len(zn))], axis=0)))}
+                for n, V in readouts.items()]
+        print("\nTemperature probe by readout (final layer, 50 components):")
+        print(pd.DataFrame(rows).round(3).to_string(index=False))
+        df = pd.read_parquet(args.data_dir / f"modeling_table_{args.year}.parquet",
+                             columns=["timestamp", "timestamp_local", "zone", "demand_MW"] + PRICE_CALENDAR)
+        ti = target.get_indexer(df["timestamp"].dt.round("3h"))
+        zi = df["zone"].map({z: k for k, z in enumerate(zn)}).to_numpy()
+        valid = ti >= 0
+        y, zones = df["demand_MW"].to_numpy(), df["zone"].to_numpy()
+        results = []
+        for scheme in ("blocked", "chronological"):
+            split = dm.assign_split(df, scheme).to_numpy()
+            tr, te = (split == "train") & valid, (split == "test") & valid
+            train_times = np.zeros(len(target), bool)
+            train_times[np.unique(ti[tr])] = True
+            print(f"\n[readout, demand, {scheme}]", flush=True)
+            for n, V in readouts.items():
+                for with_weather in (False, True):
+                    P = pca(V, train_times, 50)[0]
+                    X = df[dm.CALENDAR_FEATURES].copy()
+                    if with_weather:
+                        X = pd.concat([X, pd.DataFrame(W_target[np.clip(ti, 0, None), zi], columns=WEATHER_NAMES, index=df.index)], axis=1)
+                    X = pd.concat([X, pd.DataFrame(P[np.clip(ti, 0, None), zi], columns=[f"tok{i}" for i in range(50)], index=df.index)], axis=1)
+                    pred = fit_catboost(X, y, tr, te, args.out_dir, dm.CAT_FEATURES)
+                    byz = pd.Series(np.abs(pred - y[te]) / y[te] * 100).groupby(zones[te]).mean()
+                    label = f"{n}{' + weather' if with_weather else ''}"
+                    results.append({"lead_h": args.lead, "split": scheme, "readout": n, "with_weather": with_weather,
+                                    "mean_zone_mape_pct": byz.mean(), **{f"mape_{z}": byz.get(z, np.nan) for z in zn}})
+                    print(f"  calendar + {label:62s} MAPE {byz.mean():5.2f}%   VT {byz.get('VT', np.nan):5.1f}%", flush=True)
+                    pd.DataFrame(results).to_csv(args.out_dir / "readout_comparison.csv", index=False)
     print(f"\nWrote {args.out_dir}")
 
 

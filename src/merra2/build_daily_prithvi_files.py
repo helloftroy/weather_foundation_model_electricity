@@ -169,6 +169,17 @@ def fill_and_check(arrays: dict, label: str) -> dict:
     return out
 
 
+def is_complete(path: Path) -> bool:
+    """True if `path` exists and opens as a NetCDF file."""
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    try:
+        with xr.open_dataset(path, engine="h5netcdf"):
+            return True
+    except Exception:
+        return False
+
+
 def write_surface_file(
     out_path: Path,
     day: pd.Timestamp,
@@ -194,7 +205,9 @@ def write_surface_file(
         },
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_ds.to_netcdf(out_path, engine="h5netcdf")
+    tmp_path = out_path.with_name(out_path.name + ".part")
+    out_ds.to_netcdf(tmp_path, engine="h5netcdf")
+    tmp_path.replace(out_path)  # a killed job never leaves a partial file under the final name
 
 
 def write_vertical_file(
@@ -221,7 +234,9 @@ def write_vertical_file(
         },
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_ds.to_netcdf(out_path, engine="h5netcdf")
+    tmp_path = out_path.with_name(out_path.name + ".part")
+    out_ds.to_netcdf(tmp_path, engine="h5netcdf")
+    tmp_path.replace(out_path)  # a killed job never leaves a partial file under the final name
 
 
 def main() -> None:
@@ -267,8 +282,14 @@ def main() -> None:
         month_to_time_idx = {m: m - 1 for m in range(1, 13)}
 
     days = pd.date_range(args.start, args.end, freq="D")
-    n_written = 0
+    n_written = n_existing = 0
     for day in days:
+        # Resumable: a day whose two files are already written and readable is kept.
+        sfc_path = args.out_dir_surface / f"MERRA2_sfc_{day.strftime('%Y%m%d')}.nc"
+        pres_path = args.out_dir_vertical / f"MERRA_pres_{day.strftime('%Y%m%d')}.nc"
+        if is_complete(sfc_path) and is_complete(pres_path):
+            n_existing += 1
+            continue
         static_arrays = fill_and_check({
             # .isel (not raw .values[idx]) to index the "time" dim by label
             # regardless of its actual position among the var's axes.
@@ -313,17 +334,18 @@ def main() -> None:
         vertical_arrays = fill_and_check(vertical_arrays, f"{day.date()} vertical")
 
         write_surface_file(
-            args.out_dir_surface / f"MERRA2_sfc_{day.strftime('%Y%m%d')}.nc",
+            sfc_path,
             day, lat, lon, surface_arrays, static_arrays,
         )
         write_vertical_file(
-            args.out_dir_vertical / f"MERRA_pres_{day.strftime('%Y%m%d')}.nc",
+            pres_path,
             day, lat, lon, lev, vertical_arrays,
         )
         n_written += 1
         if n_written == 1 or n_written % 10 == 0:
             print(f"...{n_written} days written (latest {day.date()})")
 
+    print(f"Kept {n_existing} days already built.")
     print(f"Done. Wrote {n_written}/{len(days)} days to {args.out_dir_surface} and {args.out_dir_vertical}")
 
 
