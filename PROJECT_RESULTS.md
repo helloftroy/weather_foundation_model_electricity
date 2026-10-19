@@ -953,6 +953,40 @@ October-December mean $30.06 (sd $17.25).
   of each other. This is no clear evidence that the encoder adds value
   over its inputs for price.
 
+## Where to read the tokens from, 2020, lead 0
+
+The earlier finding (pooled beats local, single patches worst) was measured
+on the broken setup: regional crop, tokens in the wrong quadrant. Here it is
+repeated on the working model.
+
+Setup:
+- final-layer tokens, 50 principal components fitted on training times;
+- four ways to read the tokens for each zone;
+- the same temperature probe and demand CatBoost as above, one seed.
+
+Calendar + weather alone, for reference: 4.93% (blocked), 8.36%
+(chronological).
+
+| Readout | T2M RMSE (K) | Blocked: tokens | + weather | Chronological: tokens | + weather |
+|---|---|---|---|---|---|
+| Single nearest patch | 2.07 | 5.60% | **4.24%** | 14.99% | 10.77% |
+| Zone 3 x 3 patches | **1.74** | **5.49%** | 4.31% | 16.38% | 10.44% |
+| New England box mean | 1.97 | 7.34% | 4.48% | 17.92% | 9.23% |
+| 30-60N, 90-50W pooled | 3.14 | 8.63% | 4.74% | 15.74% | **7.99%** |
+
+- **On the working model the old ranking reverses** for temperature and the
+  blocked split. A zone's own patches are best; the wide pooled vector is
+  worst. The single nearest patch and the 3 x 3 window are about equal,
+  within seed noise.
+- **Chronological split** (new season): every readout of tokens hurts
+  except the pooled one. Pooled + weather (7.99%) is slightly better than
+  weather alone (8.36%), within about the size of seed noise. The pooled
+  vector is identical across zones and changes slowly, so it gives a tree
+  model less room to fit patterns that do not carry over.
+- **Readout cost:** the zone's own patches (9 per zone, or 1) are the
+  cheapest to save, and best wherever tokens help at all. Running the model
+  still needs the whole globe as input.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
