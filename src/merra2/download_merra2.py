@@ -80,6 +80,20 @@ def is_complete(path: Path) -> bool:
         return False
 
 
+def search_with_retry(max_tries=8, **kwargs):
+    """earthaccess.search_data, retried. NASA's search service (CMR) returns
+    occasional HTTP 500s; one of these used to end the whole job."""
+    for attempt in range(1, max_tries + 1):
+        try:
+            return earthaccess.search_data(**kwargs)
+        except Exception as e:
+            if attempt == max_tries:
+                raise
+            wait = min(60 * attempt, 600)
+            print(f"  search failed (attempt {attempt}/{max_tries}: {str(e)[:200]}); retrying in {wait}s...", flush=True)
+            time.sleep(wait)
+
+
 def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5, tmp_dir=None):
     """Fetch one granule, crop to the region (and to the levels Prithvi
     uses), and write it out.
@@ -193,7 +207,7 @@ def main() -> None:
             search_kwargs["temporal"] = (start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
         else:
             print(f"{collection} is a static/time-invariant collection -- searching with no temporal filter.")
-        results = earthaccess.search_data(**search_kwargs)
+        results = search_with_retry(**search_kwargs)
         print(f"Found {len(results)} granules for {collection}", flush=True)
         n_skipped = 0
 
