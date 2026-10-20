@@ -347,6 +347,10 @@ def main() -> None:
 
     print(f"Kept {n_existing} days already built.")
     print(f"Done. Wrote {n_written}/{len(days)} days to {args.out_dir_surface} and {args.out_dir_vertical}")
+    n_missing = len(days) - n_written - n_existing
+    if n_missing:
+        raise SystemExit(f"{n_missing} of {len(days)} days could not be built (inputs missing; see above). "
+                         "Re-run the download for those dates, then this job; finished days are kept.")
 
 
 if __name__ == "__main__":

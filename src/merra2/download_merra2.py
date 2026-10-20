@@ -80,18 +80,25 @@ def is_complete(path: Path) -> bool:
         return False
 
 
-def search_with_retry(max_tries=8, **kwargs):
-    """earthaccess.search_data, retried. NASA's search service (CMR) returns
-    occasional HTTP 500s; one of these used to end the whole job."""
+def search_with_retry(max_tries=12, **kwargs):
+    """earthaccess.search_data, retried, and an empty answer treated as a
+    failure. During NASA search-service (CMR) outages it either raises
+    (HTTP 500, "index closed") or, worse, answers "0 granules" for ranges
+    that certainly have data; the second used to let a job finish
+    "successfully" with nothing downloaded. Waits up to about 6 hours."""
     for attempt in range(1, max_tries + 1):
         try:
-            return earthaccess.search_data(**kwargs)
+            results = earthaccess.search_data(**kwargs)
+            if results:
+                return results
+            problem = "0 granules found (search service outage?)"
         except Exception as e:
-            if attempt == max_tries:
-                raise
-            wait = min(60 * attempt, 600)
-            print(f"  search failed (attempt {attempt}/{max_tries}: {str(e)[:200]}); retrying in {wait}s...", flush=True)
-            time.sleep(wait)
+            problem = str(e)[:200]
+        if attempt == max_tries:
+            raise SystemExit(f"Search for {kwargs.get('short_name')} still failing after {max_tries} tries: {problem}")
+        wait = min(60 * 2 ** (attempt - 1), 3600)
+        print(f"  search failed (attempt {attempt}/{max_tries}: {problem}); retrying in {wait // 60} min...", flush=True)
+        time.sleep(wait)
 
 
 def fetch_crop_write(granule, variables, lat_min, lat_max, lon_min, lon_max, out_path, max_retries=5, tmp_dir=None):
