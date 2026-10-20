@@ -26,6 +26,8 @@ Feature blocks:
                           50 principal components
     tokens <layer>        each saved encoder layer, 50 principal components
     decoder forecast      the decoder's 20 surface channels for the target time
+    decoder weather       only the decoder's T2M, QV2M, U10M, V10M, SWGNT: the
+                          same five variables as the weather baseline
 
 Part 1, temperature probe: ridge fit of each zone's 2 m temperature at the
 target time on each block. Part 2, demand: one pooled CatBoost model per
@@ -143,6 +145,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--iterations", type=int, default=3000)
     parser.add_argument("--parts", nargs="+", default=["probe", "demand", "price"], choices=["probe", "demand", "price", "readout"])
+    parser.add_argument("--only", nargs="+", default=None, help="Run only feature sets whose name contains one of these strings")
     parser.add_argument("--price-market", default="dayahead", choices=["dayahead", "realtime"])
     args = ARGS = parser.parse_args()
     c = args.data_dir / "compact"
@@ -167,6 +170,8 @@ def main() -> None:
     fields = meta["fields"]
     i_t2m = fields["inputs"]["channels"].index("T2M")
     j_t2m = fields["climate_sfc"]["channels"].index("T2M")
+    global DEC_IDX
+    DEC_IDX = [fields["recon_sfc"]["channels"].index(v) for v in WEATHER_VARS]
     has_recon = readable(tok_dir / fields["recon_sfc"]["file"])
 
     weather = pd.read_parquet(c / f"conventional_weather_{args.year}.parquet").set_index("timestamp")
@@ -205,6 +210,10 @@ def main() -> None:
             print(f"Decoder T2M vs the model's own input (normalised units, mean |difference|): decoder "
                   f"{np.abs(recon[:, :, j_t2m] - raw[:, :, i_t2m]).mean():.4f}, climatology {np.abs(clim[:, :, j_t2m] - raw[:, :, i_t2m]).mean():.4f}")
 
+    def wanted(combo):
+        name = "calendar" + "".join(f" + {b}" for b in combo)
+        return args.only is None or any(o in name for o in args.only)
+
     def zone_blocks(train_times):
         b = {"weather (target)": (W_target, [f"{n}" for n in WEATHER_NAMES]),
              "raw inputs": (pca(raw, train_times, 50)[0], [f"in{i}" for i in range(50)])}
@@ -214,6 +223,7 @@ def main() -> None:
             b[f"tokens {n}"] = (pca(per_zone_tokens(p, windows), train_times, 50)[0], [f"tok_{n}_{i}" for i in range(50)])
         if recon is not None:
             b["decoder forecast"] = (recon, [f"dec_{ch}" for ch in fields["recon_sfc"]["channels"]])
+            b["decoder weather"] = (recon[:, :, DEC_IDX], [f"dec_{v}" for v in WEATHER_VARS])
         return b
 
     def combos():
@@ -223,7 +233,7 @@ def main() -> None:
             out.append(["weather (issue)"])
         out += [["raw inputs"]] + [[f"tokens {n}"] for n in layers]
         if recon is not None:
-            out += [["decoder forecast"], [known, "decoder forecast"]]
+            out += [["decoder forecast"], [known, "decoder forecast"], ["decoder weather"], [known, "decoder weather"]]
         out += [[known, "tokens final"], [known, "raw inputs"]]
         return out
 
@@ -247,6 +257,8 @@ def main() -> None:
             blocks = zone_blocks(train_times)
             print(f"\n[demand, {scheme}] train {tr.sum()} rows, test {te.sum()} rows", flush=True)
             for combo in combos():
+                if not wanted(combo):
+                    continue
                 X = df[dm.CALENDAR_FEATURES].copy()
                 for b in combo:
                     V, names = blocks[b]
@@ -291,11 +303,15 @@ def main() -> None:
             for n, p in layers.items():
                 blocks[f"tokens {n}"] = (pca(box_tokens(p), train_times, 50)[0], [f"tok_{n}_{i}" for i in range(50)])
             if recon is not None:
-                blocks["decoder forecast"] = (box_pixels(tok_dir / fields["recon_sfc"]["file"]), [f"dec_{ch}" for ch in fields["recon_sfc"]["channels"]])
+                dec_box = box_pixels(tok_dir / fields["recon_sfc"]["file"])
+                blocks["decoder forecast"] = (dec_box, [f"dec_{ch}" for ch in fields["recon_sfc"]["channels"]])
+                blocks["decoder weather"] = (dec_box[:, DEC_IDX], [f"dec_{v}" for v in WEATHER_VARS])
             print(f"\n[price ({args.price_market} hub), {scheme}] train {tr.sum()} hours, test {te.sum()} hours; "
                   f"test-period mean ${y[te].mean():.2f}, sd ${y[te].std():.2f}", flush=True)
             sets = combos() + [["weather (target)", "system demand"]]
             for combo in sets:
+                if not wanted(combo):
+                    continue
                 X = df[PRICE_CALENDAR].copy()
                 for b in combo:
                     if b == "system demand":

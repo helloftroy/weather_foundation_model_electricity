@@ -987,6 +987,98 @@ Calendar + weather alone, for reference: 4.93% (blocked), 8.36%
   cheapest to save, and best wherever tokens help at all. Running the model
   still needs the whole globe as input.
 
+## 24 hours ahead: 2020, lead 24 (2026-10-20)
+
+The first real forecast test. Each sample is issued at time t (the model's
+latest input) and describes t + 24 h. Every feature is lined up on that
+target hour, so all Prithvi features and the "weather 24 h old" baseline are
+a day old. "Weather at the target hour" uses the actual MERRA-2 values, so
+it is a perfect-knowledge ceiling, not something available in practice.
+Files: `prithvi_tokens_ne_2020_lead24*` (2,900 samples; checked complete,
+no NaNs). Script: `analyze_global_year.py --lead 24`. Outputs:
+`results/global_2020_lead24/`. Same setup as the lead-0 sections; one seed.
+
+### Temperature at the target hour
+
+| Source | RMSE (K) | R² |
+|---|---|---|
+| Decoder's 24 h forecast, T2M | **1.63** | 0.974 |
+| Tokens: block 12 | 2.83 | 0.923 |
+| Tokens: final | 3.00 | 0.913 |
+| Tokens: block 0 | 3.05 | 0.910 |
+| Raw inputs, 24 h old (160 channels) | 3.32 | 0.893 |
+| Persistence: zone T2M 24 h earlier | 3.82 | 0.859 |
+| Climatology for the target time | 4.06 | 0.841 |
+
+- **The decoder is a real forecaster.** Its 24 h temperature error is
+  less than half that of persistence.
+- **The tokens carry forecast information beyond their inputs** (2.8-3.0 K
+  against 3.3 K for the stale raw inputs). Unlike at lead 0, the middle
+  layer is best. A linear readout gets much less out of them than the
+  decoder does.
+
+### Demand (mean zone MAPE)
+
+| Features | Blocked | Chronological |
+|---|---|---|
+| Calendar | 11.07% | 11.78% |
+| + weather at the target hour (ceiling) | 4.89% | **8.31%** |
+| + weather 24 h old (no forecast) | 7.53% | 11.89% |
+| + raw inputs, 24 h old | 6.51% | 12.21% |
+| + tokens: block 0 / 12 / final | 6.72% / 6.60% / 6.40% | 14.26% / 14.62% / 14.53% |
+| + decoder forecast, all 20 surface channels | 4.46% | 13.14% |
+| + decoder forecast, the 5 baseline weather variables | 4.62% | 9.94% |
+| + weather 24 h old + decoder, 20 channels | **4.27%** | 13.11% |
+| + weather 24 h old + decoder, 5 weather variables | 4.39% | **9.50%** |
+| + weather 24 h old + tokens: final | 5.82% | 10.52% |
+| + weather 24 h old + raw inputs | 6.21% | 10.68% |
+
+- **The decoder forecast is the first clear gain from the model.** With
+  weather 24 h old as the honest baseline, adding the decoder's forecast of
+  the same five weather variables cuts demand error from 7.53% to 4.39%
+  (blocked) and from 11.89% to 9.50% (chronological). On the chronological
+  split that recovers about two-thirds of the gap to the perfect-knowledge
+  ceiling.
+- On the blocked split the decoder even beats the ceiling (4.4-4.6%
+  against 4.89%). A likely reason: the decoder features are averaged over
+  the zone's 3 x 3 patch area, while the ceiling uses a single grid cell.
+  Not tested.
+- **Use only the decoder's weather variables.** With all 20 surface
+  channels the chronological split fails (13.1%, worse than calendar
+  alone). Slow seasonal channels such as leaf area and soil wetness let
+  the trees memorise the training season. With 5 variables it generalises.
+- **Tokens:** at lead 24 they beat stale raw inputs on both splits when
+  combined with old weather (5.82% against 6.21%; 10.52% against 10.68%).
+  The gain is small and within seed noise. The decoder output is far more
+  useful than the tokens.
+
+### Hub price, day-ahead
+
+| Features | Blocked: MAE | R² | Chronological: MAE | R² |
+|---|---|---|---|---|
+| + weather at the target hour (ceiling) | $5.86 | 0.00 | $14.24 | -0.47 |
+| + weather 24 h old | $7.24 | -0.53 | $14.50 | -0.59 |
+| + weather 24 h old + decoder, 5 weather variables | $5.52 | 0.19 | $13.93 | -0.46 |
+| + tokens: block 0 | $5.69 | 0.17 | **$11.58** | -0.16 |
+| + weather at target + system demand | **$5.06** | 0.20 | $12.45 | -0.17 |
+
+- Price is barely weather-driven in 2020 (see lead 0). The decoder forecast
+  brings the stale-weather model to the level of the ceiling on the
+  blocked split. Nothing works on the chronological split. Full table in
+  `results/global_2020_lead24/run.log`.
+
+### Caveats
+
+- **One year, one seed, within-year splits.** It needs year-ahead
+  training on 2021-2024.
+- **The baseline is not a real forecast.** The fair practical comparison
+  is against actual operational weather forecasts (for example archived NWS
+  or GFS forecasts for the zone points), which beat persistence by a lot.
+  The decoder may or may not beat those.
+- **The inputs are themselves reanalysis.** MERRA-2 is published weeks
+  late, so this is not yet a usable real-time forecasting setup; it shows
+  what the model's representations can supply.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
