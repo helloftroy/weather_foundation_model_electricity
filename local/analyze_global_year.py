@@ -28,6 +28,15 @@ Feature blocks:
     decoder forecast      the decoder's 20 surface channels for the target time
     decoder weather       only the decoder's T2M, QV2M, U10M, V10M, SWGNT: the
                           same five variables as the weather baseline
+    true weather, area    the same five variables, TRUE values at the target
+                          time, averaged over the same zone area as the decoder
+                          (taken from the lead-0 run's inputs). The fair
+                          ceiling for the decoder: same variables, same area,
+                          same units, perfect knowledge
+    past price            (price only) the hub price 24 h, 48 h and 7 days
+                          before the target hour, and the mean of the 24 hours
+                          ending 24 h before it: all known when the day-ahead
+                          market for the target day is bid
 
 Part 1, temperature probe: ridge fit of each zone's 2 m temperature at the
 target time on each block. Part 2, demand: one pooled CatBoost model per
@@ -184,6 +193,23 @@ def main() -> None:
     recon = per_zone_pixels(tok_dir / fields["recon_sfc"]["file"], windows) if has_recon else None  # [T, zone, 20], target time
     clim = per_zone_pixels(tok_dir / fields["climate_sfc"]["file"], windows)
 
+    # True weather over the zone area at the target time, from the lead-0 run's inputs.
+    area_true = area_true_box = None
+    stem0 = tok_dir / f"prithvi_tokens_ne_{args.year}"
+    if args.lead and stem0.with_suffix(".json").exists():
+        meta0 = json.loads(stem0.with_suffix(".json").read_text())
+        f0 = tok_dir / meta0["fields"]["inputs"]["file"]
+        if readable(f0):
+            idx0 = [meta0["fields"]["inputs"]["channels"].index(v) for v in WEATHER_VARS]
+            pos = pd.DatetimeIndex(meta0["timestamps"]).get_indexer(target)
+            ok = pos >= 0
+            z = per_zone_pixels(f0, windows)[:, :, idx0]
+            area_true = np.full((len(target), len(zn), len(idx0)), np.nan, np.float32)
+            area_true[ok] = z[pos[ok]]
+            b0 = box_pixels(f0)[:, idx0]
+            area_true_box = np.full((len(target), len(idx0)), np.nan, np.float32)
+            area_true_box[ok] = b0[pos[ok]]
+            print(f"True weather over the zone areas: from {f0.name}, {ok.sum()}/{len(target)} target times matched")
     T2M = W_target[:, :, 0]   # each zone's MERRA-2 2 m temperature at the target time, K
 
     # ---------------- Part 1: temperature probe ----------------
@@ -224,6 +250,8 @@ def main() -> None:
         if recon is not None:
             b["decoder forecast"] = (recon, [f"dec_{ch}" for ch in fields["recon_sfc"]["channels"]])
             b["decoder weather"] = (recon[:, :, DEC_IDX], [f"dec_{v}" for v in WEATHER_VARS])
+        if area_true is not None:
+            b["true weather, area"] = (area_true, [f"area_{v}" for v in WEATHER_VARS])
         return b
 
     def combos():
@@ -235,6 +263,8 @@ def main() -> None:
         if recon is not None:
             out += [["decoder forecast"], [known, "decoder forecast"], ["decoder weather"], [known, "decoder weather"]]
         out += [[known, "tokens final"], [known, "raw inputs"]]
+        if area_true is not None:
+            out += [["true weather, area"], [known, "true weather, area"]]
         return out
 
     # ---------------- Part 2: demand ----------------
@@ -283,7 +313,14 @@ def main() -> None:
         df["system_demand_MW"] = g["demand_MW"].sum()
         lmp = pd.read_parquet(c / f"isone_{args.price_market}_hourly_lmp_{args.year}.parquet")
         lmp["timestamp"] = pd.to_datetime(lmp["timestamp_parsed"]).astype("datetime64[ns]")
-        df = df.join(lmp[lmp["location"] == "HUB"].set_index("timestamp")["lmp_total"], how="inner").reset_index()
+        hub = lmp[lmp["location"] == "HUB"].set_index("timestamp")["lmp_total"].sort_index()
+        df = df.join(hub, how="inner").reset_index()
+        day_mean = hub.rolling("24h").mean()
+        past = {"price_lag24h": hub.reindex(df["timestamp"] - pd.Timedelta(hours=24)),
+                "price_lag48h": hub.reindex(df["timestamp"] - pd.Timedelta(hours=48)),
+                "price_lag7d": hub.reindex(df["timestamp"] - pd.Timedelta(days=7)),
+                "price_mean_24h_to_lag24h": day_mean.reindex(df["timestamp"] - pd.Timedelta(hours=24))}
+        past = pd.DataFrame({k: v.to_numpy() for k, v in past.items()}, index=df.index)
         ti = target.get_indexer(df["timestamp"].dt.round("3h"))
         valid = ti >= 0
         y = df["lmp_total"].to_numpy()
@@ -306,9 +343,16 @@ def main() -> None:
                 dec_box = box_pixels(tok_dir / fields["recon_sfc"]["file"])
                 blocks["decoder forecast"] = (dec_box, [f"dec_{ch}" for ch in fields["recon_sfc"]["channels"]])
                 blocks["decoder weather"] = (dec_box[:, DEC_IDX], [f"dec_{v}" for v in WEATHER_VARS])
+            if area_true_box is not None:
+                blocks["true weather, area"] = (area_true_box, [f"area_{v}" for v in WEATHER_VARS])
             print(f"\n[price ({args.price_market} hub), {scheme}] train {tr.sum()} hours, test {te.sum()} hours; "
                   f"test-period mean ${y[te].mean():.2f}, sd ${y[te].std():.2f}", flush=True)
-            sets = combos() + [["weather (target)", "system demand"]]
+            known = "weather (issue)" if args.lead else "weather (target)"
+            sets = combos() + [["weather (target)", "system demand"], ["past price"], [known, "past price"],
+                               ["weather (target)", "past price"]]
+            if recon is not None:
+                sets += [[known, "decoder weather", "past price"]]
+            sets += [[known, "tokens final", "past price"]]
             for combo in sets:
                 if not wanted(combo):
                     continue
@@ -316,6 +360,9 @@ def main() -> None:
                 for b in combo:
                     if b == "system demand":
                         X["system_demand_MW"] = df["system_demand_MW"]
+                        continue
+                    if b == "past price":
+                        X = pd.concat([X, past], axis=1)
                         continue
                     V, names = blocks[b]
                     X = pd.concat([X, pd.DataFrame(V[np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)
