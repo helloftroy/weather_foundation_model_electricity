@@ -69,7 +69,9 @@ def get(url, byte_range=None, tries=6):
             err = e
         except Exception as e:  # noqa: BLE001 - network errors of every kind are retried
             err = e
-        time.sleep(min(10 * 2 ** (attempt - 1), 300))
+        wait = min(10 * 2 ** (attempt - 1), 300)
+        print(f"  retry {attempt}/{tries} in {wait}s: {url.rsplit('/', 3)[-3:]} {byte_range or ''}: {str(err)[:120]}", flush=True)
+        time.sleep(wait)
     raise RuntimeError(f"{url}: {err}")
 
 
