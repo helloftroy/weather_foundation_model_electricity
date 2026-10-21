@@ -1120,6 +1120,43 @@ earlier. No gas prices.
   wider region drives gas demand and so prices) that zone weather does not.
   It needs the multi-year test.
 
+### Price with gas prices added (2026-10-21)
+
+Gas table for 2020 from `build_gas_prices.py`, same sources as 2024. The
+Algonquin pattern now also matches "from a high of $X ... to a low of $Y"
+(most 2020 reports): 52 quotes in 2020, at most 14 days apart. The 2024
+table is unchanged.
+
+Two versions:
+- **Gas (known):** what a bidder has the morning before the day-ahead
+  market clears. Henry Hub spot for the last trading day on or before D-2,
+  and the last Algonquin quote on or before D-2, held flat.
+- **Gas (same day):** day D's values, as in the 2024 models. The Algonquin
+  interpolation uses the next weekly quote, so this is an upper bound.
+
+Lead 24; "old weather" is weather 24 h before the target hour.
+
+| Features (all with calendar + old weather) | Blocked: MAE | R² | Chronological: MAE | R² |
+|---|---|---|---|---|
+| + past price | $5.95 | -0.01 | $10.29 | 0.09 |
+| + gas (known) | $6.88 | -0.55 | $13.34 | -0.36 |
+| + past price + gas (known) | $5.60 | 0.10 | $9.64 | 0.14 |
+| + decoder weather + past price + gas (known) | $4.61 | 0.39 | $9.49 | 0.22 |
+| + tokens: final + past price + gas (known) | $4.65 | **0.44** | $8.66 | 0.33 |
+| + past price + gas (same day; upper bound) | $4.92 | 0.39 | **$7.92** | **0.42** |
+| Ceiling: weather at the target hour + past price + gas (known) | **$4.53** | 0.41 | $10.57 | 0.12 |
+
+- **Known gas adds little once past prices are in** (about $0.35-0.65).
+  Past prices already carry the price level.
+- **Same-day gas helps much more on the chronological split** ($7.92,
+  R² 0.42), but it partly uses the following week's gas price, so it is not
+  achievable in practice.
+- **With gas, the Prithvi features still matter.** Decoder or tokens +
+  past price + known gas match the perfect-knowledge ceiling on the blocked
+  split ($4.61 / $4.65 against $4.53). On the chronological split, tokens
+  are best among achievable sets ($8.66, R² 0.33), much as without gas
+  ($8.53).
+
 ### Caveats
 
 - **One year, one seed, within-year splits.** It needs year-ahead
