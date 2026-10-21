@@ -1067,6 +1067,59 @@ no NaNs). Script: `analyze_global_year.py --lead 24`. Outputs:
   blocked split. Nothing works on the chronological split. Full table in
   `results/global_2020_lead24/run.log`.
 
+### Fair ceiling: true weather over the same area (2026-10-21)
+
+The decoder appeared to beat "perfect knowledge". That ceiling was six
+MERRA-2 numbers at ONE grid cell, while the decoder features are averaged
+over the zone's 3 x 3 patch area. The fair ceiling is the same five
+variables, true values at the target hour, averaged over the same area in
+the same units. Here it is taken from the lead-0 run's inputs.
+
+| Demand features | Blocked | Chronological |
+|---|---|---|
+| Weather 24 h old (no forecast) | 7.53% | 11.89% |
+| + decoder forecast, 5 variables, zone area | 4.39% | 9.50% |
+| + true weather, 5 variables, zone area (fair ceiling) | **4.12%** | **8.82%** |
+| True weather at one grid cell (earlier ceiling), alone | 4.89% | 8.31% |
+| True weather over the zone area, alone | 4.39% | 10.07% |
+
+- **The forecast does not beat the truth.** Against the fair ceiling the
+  decoder recovers about 90% of the gap on the blocked split and 78% on the
+  chronological split.
+- The earlier "beats perfect knowledge" was an area-versus-point effect.
+  Area-averaged weather is a better demand feature than one grid cell on the
+  blocked split (4.39% against 4.89%), though not on the chronological split.
+
+### Price with past prices (2026-10-21)
+
+Day-ahead hub price, lead 24, adding past prices that are known when the
+day-ahead market for the target day is bid: the hub price at the same hour
+24 h, 48 h and 7 days earlier, and the mean of the 24 hours ending 24 h
+earlier. No gas prices.
+
+| Features | Blocked: MAE | R² | Chronological: MAE | R² |
+|---|---|---|---|---|
+| Calendar + weather 24 h old (no past price) | $7.24 | -0.53 | $14.50 | -0.59 |
+| Calendar + past price | $6.73 | -0.29 | $10.74 | 0.04 |
+| + weather 24 h old | $5.95 | -0.01 | $10.29 | 0.09 |
+| + weather 24 h old + decoder weather | $4.60 | 0.42 | $9.55 | 0.23 |
+| + weather 24 h old + tokens: final | $5.06 | 0.27 | **$8.53** | **0.34** |
+| + weather at the target hour (ceiling) | **$4.55** | **0.45** | $10.93 | 0.08 |
+
+- **Past prices rescue the chronological split.** Every model was below
+  R² 0 without them; with them, all are above 0. They carry the
+  autumn price level, which weather cannot.
+- **The forecast matters for price too.** On the blocked split, decoder
+  weather + past price ($4.60, R² 0.42) is almost exactly the
+  perfect-knowledge ceiling ($4.55, R² 0.45). That is a large gain over
+  stale weather + past price ($5.95).
+- **Tokens + past price win the chronological split** ($8.53, R² 0.34),
+  beating even the ceiling. This is the first case where tokens beat
+  everything else. Treat with caution: one seed, one year, and a three-month
+  test period. Possibly the tokens carry larger-scale weather (cold over a
+  wider region drives gas demand and so prices) that zone weather does not.
+  It needs the multi-year test.
+
 ### Caveats
 
 - **One year, one seed, within-year splits.** It needs year-ahead
