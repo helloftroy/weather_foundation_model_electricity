@@ -33,6 +33,15 @@ Feature blocks:
                           (taken from the lead-0 run's inputs). The fair
                           ceiling for the decoder: same variables, same area,
                           same units, perfect knowledge
+    gas (known)           (price only) natural gas, $/MMBtu, as known when the
+                          day-ahead market for target day D is bid (morning
+                          of D-1): Henry Hub spot for the last trading day
+                          on or before D-2, and the last Algonquin Citygate
+                          quote on or before D-2, held flat (no interpolation)
+    gas (same day)        (price only) day D's values as in the 2024 price
+                          models: Henry Hub for D, Algonquin interpolated
+                          between weekly quotes (uses the NEXT quote, so an
+                          upper bound, not a forecast)
     past price            (price only) the hub price 24 h, 48 h and 7 days
                           before the target hour, and the mean of the 24 hours
                           ending 24 h before it: all known when the day-ahead
@@ -321,6 +330,21 @@ def main() -> None:
                 "price_lag7d": hub.reindex(df["timestamp"] - pd.Timedelta(days=7)),
                 "price_mean_24h_to_lag24h": day_mean.reindex(df["timestamp"] - pd.Timedelta(hours=24))}
         past = pd.DataFrame({k: v.to_numpy() for k, v in past.items()}, index=df.index)
+        gas_known = gas_same = None
+        gas_csv = args.data_dir / "gas" / f"gas_prices_daily_{args.year}.csv"
+        if gas_csv.exists():
+            daily = pd.read_csv(gas_csv, parse_dates=["date"]).set_index("date")
+            pts = pd.read_csv(args.data_dir / "gas" / f"algonquin_weekly_points_{args.year}.csv", parse_dates=["date"]).set_index("date")["price"]
+            hh_raw = pd.read_excel(args.data_dir / "gas" / "RNGWHHDd.xls", sheet_name="Data 1", skiprows=2)
+            hh_raw.columns = ["date", "henry_hub"]
+            hh_raw = hh_raw.dropna().assign(date=lambda d: pd.to_datetime(d["date"])).set_index("date")["henry_hub"].sort_index()
+            day = df["timestamp_local"].dt.tz_localize(None).dt.normalize() if df["timestamp_local"].dt.tz is not None else df["timestamp_local"].dt.normalize()
+            cutoff = (day - pd.Timedelta(days=2)).to_numpy()
+            gas_known = pd.DataFrame({"henry_hub_known": hh_raw.reindex(cutoff, method="ffill").to_numpy(),
+                                      "algonquin_known": pts.sort_index().reindex(cutoff, method="ffill").to_numpy()}, index=df.index)
+            gas_same = pd.DataFrame({"henry_hub_same_day": daily["henry_hub"].reindex(day).to_numpy(),
+                                     "algonquin_same_day": daily["algonquin_weekly"].reindex(day).to_numpy()}, index=df.index)
+            print(f"Gas: {gas_csv.name}; known-in-advance missing for {int(gas_known.isna().any(axis=1).sum())} hours")
         ti = target.get_indexer(df["timestamp"].dt.round("3h"))
         valid = ti >= 0
         y = df["lmp_total"].to_numpy()
@@ -353,6 +377,13 @@ def main() -> None:
             if recon is not None:
                 sets += [[known, "decoder weather", "past price"]]
             sets += [[known, "tokens final", "past price"]]
+            if gas_known is not None:
+                sets += [[known, "gas (known)"], [known, "past price", "gas (known)"],
+                         ["weather (target)", "past price", "gas (known)"]]
+                if recon is not None:
+                    sets += [[known, "decoder weather", "past price", "gas (known)"]]
+                sets += [[known, "tokens final", "past price", "gas (known)"],
+                         [known, "gas (same day)"], [known, "past price", "gas (same day)"]]
             for combo in sets:
                 if not wanted(combo):
                     continue
@@ -363,6 +394,9 @@ def main() -> None:
                         continue
                     if b == "past price":
                         X = pd.concat([X, past], axis=1)
+                        continue
+                    if b in ("gas (known)", "gas (same day)"):
+                        X = pd.concat([X, gas_known if b == "gas (known)" else gas_same], axis=1)
                         continue
                     V, names = blocks[b]
                     X = pd.concat([X, pd.DataFrame(V[np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)

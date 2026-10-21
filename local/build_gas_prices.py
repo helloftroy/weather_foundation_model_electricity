@@ -33,8 +33,9 @@ HENRY_HUB_URL = "https://www.eia.gov/dnav/ng/hist_xls/RNGWHHDd.xls"
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 SENTENCE = re.compile(
     # ".{0,60}?" allows for the change amount, which is sometimes in dollars ("went up $9.31 from ...").
-    r"Algonquin Citygate, which serves Boston-area consumers\s*,.{0,60}?from \$(\d+\.\d+)[^$]*?"
-    r"last (Wednesday|Thursday|Tuesday|Friday|week) to \$(\d+\.\d+)[^.]*?(yesterday|this Wednesday|this week)",
+    # "a high of" / "a low of" appear before either price in some reports (most of 2020).
+    r"Algonquin Citygate, which serves Boston-area consumers\s*,.{0,60}?from (?:a (?:high|low) of )?\$(\d+\.\d+)[^$]*?"
+    r"last (Wednesday|Thursday|Tuesday|Friday|week) to (?:a (?:high|low) of )?\$(\d+\.\d+)[^.]*?(yesterday|this Wednesday|this week)",
     re.S,
 )
 
