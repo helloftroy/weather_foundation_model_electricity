@@ -49,10 +49,11 @@ for YEAR in "${YEARS[@]}"; do
   lmp=$(submit isone_lmp_dl "afterany:${demand}" $S/service/05_download_isone_lmp_2024.sbatch)
   prev_isone="${lmp}"
   parse_lmp=$(submit parse_lmp "afterok:${lmp}" $S/cpu_morrill/06_parse_isone_lmp.sbatch)
+  parse_demand=$(submit parse_demand "afterok:${demand}" $S/cpu_morrill/07_parse_isone_demand.sbatch)
 
   if [ "${SKIP_MERRA:-0}" = "1" ]; then
     after_daily=""
-    line="${YEAR}: demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp} (MERRA-2 steps skipped)"
+    line="${YEAR}: demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp}, parse_demand ${parse_demand} (MERRA-2 steps skipped)"
   else
     # The MERRA-2 download is the slow step, so each year is fetched as four
     # quarters in parallel. Files are written under a temporary name and
@@ -66,7 +67,7 @@ for YEAR in "${YEARS[@]}"; do
     prev_merra="${merra}"
     daily=$(submit build_daily "afterok:${merra}" $S/cpu_morrill/02_build_daily_prithvi_files.sbatch)
     after_daily="afterok:${daily}"
-    line="${YEAR}: merra2 ${merra}, daily ${daily}, demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp}"
+    line="${YEAR}: merra2 ${merra}, daily ${daily}, demand ${demand}, lmp ${lmp}, parse_lmp ${parse_lmp}, parse_demand ${parse_demand}"
   fi
   weather=$(submit conv_weather "${after_daily}" $S/cpu_morrill/04_extract_conventional_weather.sbatch)
   line="${line}, weather ${weather}"

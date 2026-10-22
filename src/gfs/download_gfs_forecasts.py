@@ -100,6 +100,19 @@ def byte_ranges(idx_text):
     return out
 
 
+def fetch_message(url, start, end, tries=4):
+    """One field's bytes, checked to be a whole GRIB message (starts 'GRIB',
+    ends '7777'). A truncated or corrupted transfer is fetched again; if it
+    stays bad, returns None and the forecast hour is skipped."""
+    for attempt in range(1, tries + 1):
+        msg = get(url, (start, end))
+        if msg and msg[:4] == b"GRIB" and msg.rstrip(b"\n")[-4:] == b"7777":
+            return msg
+        print(f"  incomplete GRIB message ({len(msg or b'')} bytes) for {url.rsplit('/', 1)[-1]} bytes {start}-{end}, try {attempt}/{tries}", flush=True)
+        time.sleep(5 * attempt)
+    return None
+
+
 def decode(msg_bytes):
     h = eccodes.codes_new_from_message(msg_bytes)
     try:
@@ -125,7 +138,14 @@ def fetch_one(run, fhour, out_dir):
         raise RuntimeError(f"{url}: fields not in the index: {sorted(lacking)}")
     arrays, desc = {}, {}
     for name, (start, end, text) in ranges.items():
-        vals, lats, lons = decode(get(url, (start, end)))
+        msg = fetch_message(url, start, end)
+        if msg is None:
+            return None, "bad"
+        try:
+            vals, lats, lons = decode(msg)
+        except Exception as e:  # noqa: BLE001 - an undecodable field skips this forecast hour, not the job
+            print(f"  could not decode {name} in {url.rsplit('/', 1)[-1]}: {e}", flush=True)
+            return None, "bad"
         r = (lats >= LAT_RANGE[0]) & (lats <= LAT_RANGE[1])
         c = (lons >= LON_RANGE[0]) & (lons <= LON_RANGE[1])
         arrays[name] = vals[np.ix_(r, c)].astype(np.float32)
@@ -176,19 +196,19 @@ def main() -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     jobs = [(r, f) for r in runs for f in FHOURS]
     print(f"{len(runs)} runs x {len(FHOURS)} forecast hours = {len(jobs)} files, {args.workers} at a time", flush=True)
-    counts = {"kept": 0, "fetched": 0, "missing": 0}
+    counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0}
     missing = []
     with ThreadPoolExecutor(args.workers) as pool:
         futures = {pool.submit(fetch_one, r, f, raw_dir): (r, f) for r, f in jobs}
         for i, fut in enumerate(as_completed(futures), 1):
             _, status = fut.result()
             counts[status] += 1
-            if status == "missing":
+            if status in ("missing", "bad"):
                 missing.append(futures[fut])
             if i % 200 == 0 or i == len(jobs):
                 print(f"...{i}/{len(jobs)} ({counts})", flush=True)
     if missing:
-        print(f"{len(missing)} forecast files not in the archive, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
+        print(f"{len(missing)} forecast files missing from the archive or unreadable, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
     combine(raw_dir, args.year, args.out_dir / f"gfs_ne_{args.year}.nc")
 
 
