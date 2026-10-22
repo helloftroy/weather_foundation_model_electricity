@@ -1169,6 +1169,67 @@ Lead 24; "old weather" is weather 24 h before the target hour.
   late, so this is not yet a usable real-time forecasting setup; it shows
   what the model's representations can supply.
 
+# GFS benchmark: real 24 h weather forecasts for demand (2026-10-22)
+
+NOAA GFS 0.25-degree forecasts from the public AWS archive
+(`src/gfs/download_gfs_forecasts.py`, `data/gfs/gfs_ne_YEAR.nc`). For each
+3-hourly target time T: the run at T - 24 h (forecast hour 24) or T - 27 h
+(hour 27), i.e. the latest run issued at least 24 h before T, as in the
+lead-24 Prithvi setup. Script: `local/gfs_demand_benchmark.py`; outputs in
+`results/gfs_benchmark_2023_2024/`.
+
+Feature blocks per zone (T2M, QV2M, U10M, V10M, net shortwave, wind speed):
+- **Weather (target):** MERRA-2 at the zone's grid cell at T. Perfect
+  knowledge, single-cell ceiling.
+- **Weather (issue):** the same at T - 24 h. Persistence.
+- **GFS point:** the GFS forecast at the 0.25-degree cell nearest the zone
+  point.
+- **GFS area:** the GFS forecast averaged over the zone's 3 x 3 Prithvi patch
+  window, the same area the decoder features use.
+
+GFS shortwave is a 3-6 h average (DSWRF - USWRF), not an hourly value.
+Every feature set is scored on the same hours (those with a GFS forecast).
+At the time of this run, January 1 of each year was missing (since fixed).
+CatBoost as elsewhere, 3,000 trees, one seed.
+
+### 2 m temperature forecast check (zone grid cells, against MERRA-2)
+
+| Year | GFS 24-27 h RMSE (K) | Bias (K) | Persistence RMSE (K) |
+|---|---|---|---|
+| 2023 | 2.09 | +0.18 | 3.77 |
+| 2024 | 2.08 | +0.13 | 3.49 |
+
+These are raw point-to-point errors. They are not comparable with the 2020
+Prithvi decoder's 1.63 K, which came from a fitted linear readout of an
+area average in a different year.
+
+### Demand, mean zone MAPE
+
+| Features | Blocked 2023 | Blocked 2024 | Chron. 2023 | Chron. 2024 | Year-ahead (train 2023, test 2024) |
+|---|---|---|---|---|---|
+| Calendar | 9.73% | 10.99% | 11.63% | 15.94% | 11.84% |
+| + weather at T (ceiling, one cell) | 4.22% | 5.31% | 7.84% | 8.85% | 5.26% |
+| + weather 24 h old | 6.79% | 7.44% | 10.77% | 11.38% | 7.80% |
+| + GFS point | 4.44% | 5.31% | 8.42% | 10.29% | 5.40% |
+| + GFS area | 4.18% | 5.15% | 8.48% | 9.18% | 5.01% |
+| + weather 24 h old + GFS point | 4.17% | **4.85%** | 9.03% | 9.48% | 4.77% |
+| + weather 24 h old + GFS area | **3.99%** | 4.86% | 8.80% | **8.31%** | **4.57%** |
+
+- **A real forecast closes almost the whole gap.** In the year-ahead test,
+  stale weather + GFS area (4.57%) beats the single-cell perfect-knowledge
+  ceiling (5.26%). As with the Prithvi decoder, that is an area-versus-point
+  effect plus the extra information in yesterday's weather, not a forecast
+  beating the truth.
+- **Area beats point** in most splits, as it did for MERRA-2 and the
+  decoder.
+- **For comparison with the 2020 Prithvi decoder** (different year, so
+  only indicative): the share of the stale-to-ceiling gap closed is
+  - Prithvi decoder, 2020: about 119% (blocked) and 67% (chronological);
+  - GFS area: 2023 about 108% and 67%; 2024 about 122% and 121%.
+
+  The two forecasts look broadly similar. A head-to-head needs lead-24
+  Prithvi runs for 2021-2024.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
