@@ -57,7 +57,7 @@ def previous_weekday(day: dt.date, name: str) -> dt.date:
 
 def algonquin_points(cache: Path, start: dt.date, end: dt.date) -> pd.DataFrame:
     rows, last_pair = [], None
-    thursday = start - dt.timedelta(days=(start.weekday() - 3) % 7 + 7)
+    thursday = start - dt.timedelta(days=(start.weekday() - 3) % 7 + 14)  # two weeks early: holiday-week reports are often missing
     while thursday <= end + dt.timedelta(days=14):
         for offset in (0, -1, 1, -2):  # holidays move publication off Thursday
             published = thursday + dt.timedelta(days=offset)
