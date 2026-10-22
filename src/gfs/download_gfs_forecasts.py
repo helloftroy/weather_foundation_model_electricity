@@ -138,7 +138,7 @@ def fetch_one(run, fhour, out_dir):
 
 
 def combine(out_dir, year, out_nc):
-    files = sorted(out_dir.glob(f"gfs_{year}*_f0??.npz"))
+    files = sorted(out_dir.glob("gfs_??????????_f0??.npz"))  # all runs, incl. Dec 30-31 of the previous year (they cover Jan 1)
     if not files:
         raise SystemExit("Nothing to combine.")
     first = np.load(files[0])
