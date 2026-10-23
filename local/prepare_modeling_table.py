@@ -9,6 +9,12 @@ Only the global-pooled Prithvi embedding (global_emb_*) is carried forward.
 The per-region embeddings stay in the cluster output for later use. If the
 embedding columns are entirely NaN they are dropped with a warning, so the
 calendar and weather baselines can still be run.
+
+Without an embedding run, build the same table from the parsed demand and
+weather tables instead (--isone-demand-parquet and
+--conventional-weather-parquet): weather is joined to each demand hour from
+the nearest 3-hourly time within 90 minutes, as assemble_compact_dataset.py
+does on the cluster.
 """
 import argparse
 from pathlib import Path
@@ -48,15 +54,27 @@ def add_own_zone_weather(df: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--compact-parquet", type=Path, required=True, help="modeling_input_*.parquet from the cluster")
+    parser.add_argument("--compact-parquet", type=Path, help="modeling_input_*.parquet from the cluster")
+    parser.add_argument("--isone-demand-parquet", type=Path, help="Instead of --compact-parquet: isone_realtime_demand_YEAR.parquet")
+    parser.add_argument("--conventional-weather-parquet", type=Path, help="With --isone-demand-parquet: conventional_weather_YEAR.parquet")
     parser.add_argument("--out-parquet", type=Path, required=True)
     args = parser.parse_args()
 
-    all_cols = pq.ParquetFile(args.compact_parquet).schema.names
-    emb_cols = [c for c in all_cols if c.startswith("global_emb_")]
-    other_cols = [c for c in all_cols if "_emb_" not in c]
-
-    df = pd.read_parquet(args.compact_parquet, columns=other_cols)
+    if args.compact_parquet:
+        all_cols = pq.ParquetFile(args.compact_parquet).schema.names
+        emb_cols = [c for c in all_cols if c.startswith("global_emb_")]
+        other_cols = [c for c in all_cols if "_emb_" not in c]
+        df = pd.read_parquet(args.compact_parquet, columns=other_cols)
+    elif args.isone_demand_parquet and args.conventional_weather_parquet:
+        emb_cols = []
+        demand = pd.read_parquet(args.isone_demand_parquet).rename(columns={"timestamp_parsed": "timestamp"})
+        demand["timestamp"] = pd.to_datetime(demand["timestamp"]).astype("datetime64[ns]")
+        weather = pd.read_parquet(args.conventional_weather_parquet)
+        weather["timestamp"] = pd.to_datetime(weather["timestamp"]).astype("datetime64[ns]")
+        df = pd.merge_asof(demand.sort_values("timestamp"), weather.sort_values("timestamp"), on="timestamp",
+                           direction="nearest", tolerance=pd.Timedelta(minutes=90))
+    else:
+        parser.error("give --compact-parquet, or both --isone-demand-parquet and --conventional-weather-parquet")
     for c in ("timestamp", "timestamp_local"):
         df[c] = pd.to_datetime(df[c])
 

@@ -219,6 +219,18 @@ def main() -> None:
             area_true_box = np.full((len(target), len(idx0)), np.nan, np.float32)
             area_true_box[ok] = b0[pos[ok]]
             print(f"True weather over the zone areas: from {f0.name}, {ok.sum()}/{len(target)} target times matched")
+    elif args.lead:
+        # No lead-0 run: this run's own inputs are the true weather at each ISSUE time, so the
+        # sample issued at T holds the truth for target T (the year's last day has no such sample).
+        idx0 = [fields["inputs"]["channels"].index(v) for v in WEATHER_VARS]
+        pos = issue.get_indexer(target)
+        ok = pos >= 0
+        area_true = np.full((len(target), len(zn), len(idx0)), np.nan, np.float32)
+        area_true[ok] = raw[pos[ok]][:, :, idx0]
+        b0 = box_pixels(tok_dir / fields["inputs"]["file"])[:, idx0]
+        area_true_box = np.full((len(target), len(idx0)), np.nan, np.float32)
+        area_true_box[ok] = b0[pos[ok]]
+        print(f"True weather over the zone areas: from this run's own inputs, {ok.sum()}/{len(target)} target times matched")
     T2M = W_target[:, :, 0]   # each zone's MERRA-2 2 m temperature at the target time, K
 
     # ---------------- Part 1: temperature probe ----------------
