@@ -1384,6 +1384,78 @@ recurs.)
   - One seed; the gains are larger than seed noise seen before, but are not
     tested here.
 
+## Price v2: four normalisers, hard days, bootstrap (2026-10-26)
+
+`local/price_benchmark.py` (outputs `results/price_benchmark_v2/`:
+`price_summary.csv`, `price_predictions.parquet`). Same year-ahead folds and
+feature sets as above, plus "+ GFS + decoder + tokens". Each model predicts
+LMP / N; the price is the prediction x N, and errors are on the price.
+
+| Version | Normaliser N, known when the day-ahead market is bid |
+|---|---|
+| A (main) | Henry Hub spot, last trading day on or before D-1 |
+| A' | last published Algonquin quote dated on or before D-2, carried forward, never interpolated |
+| B-norm | mean day-ahead hub LMP over the 7 days ending 24 h before the target hour (gas-free) |
+| B | none (raw LMP, gas-free) |
+
+**Hard days** are defined from the actual temperature over the zone areas
+(system-weighted), with thresholds from the training years only.
+- **Cold snap:** daily mean at or below the 5th percentile of training
+  days.
+- **Heat wave:** daily maximum at or above the 95th percentile.
+
+Test hours: 96 cold-snap and 120 heat-wave hours in 2023 (4 and 5 days);
+288 and 336 in 2024.
+
+**Intervals:** 95% intervals come from resampling calendar weeks (2,000
+draws) of paired hourly differences in absolute error, against
+"+ old weather + GFS". Negative means better than GFS.
+
+### Overall MAE ($/MWh) and the difference from GFS
+
+| Features (+ calendar + past values) | A 2023 | A 2024 | A' 2023 | A' 2024 | B-norm 2023 | B-norm 2024 | B 2023 | B 2024 |
+|---|---|---|---|---|---|---|---|---|
+| + old weather | 10.37 | 9.98 | 13.27 | 10.08 | 11.79 | 9.38 | 13.11 | 9.80 |
+| + old weather + GFS (reference) | 8.55 | 8.30 | 10.72 | 8.84 | 8.78 | 7.93 | 9.54 | 7.64 |
+| + Prithvi decoder instead of GFS | 8.70 | 8.11 | 11.05 | 8.87 | 8.90 | 8.03 | 9.64 | 7.82 |
+| + GFS + decoder | 8.50 | 8.13* | 10.92 | 8.71 | 8.67 | 7.84 | 9.19* | 7.44 |
+| + GFS + tokens | 8.10* | 8.43 | 10.98 | 8.85 | 8.55 | 7.87 | 8.46* | 6.94* |
+| + GFS + decoder + tokens | 8.13* | 8.38 | 11.04 | 8.93 | 8.56 | 7.65 | 8.35* | 7.01* |
+| + actual area weather at T | 8.58 | 8.36 | 10.80 | 8.71 | 8.73 | 7.94 | 9.91 | 8.37 |
+
+\* 95% interval of the difference from GFS excludes zero (better than GFS).
+
+- **A weather forecast matters for price in every version.** GFS cuts MAE
+  by $1.5-3.6 relative to stale weather. The Prithvi decoder alone is level
+  with GFS (no interval excludes zero in its favour).
+- **The token gain is mostly a regime effect.** On raw LMP (B), GFS +
+  tokens is better than GFS in both years ($1.08 [0.52, 1.66] and $0.70
+  [0.09, 1.44]). Once the price level is normalised, the gain shrinks and is
+  no longer significant:
+  - B-norm: $0.24 and $0.05;
+  - A' (Algonquin): none;
+  - A (Henry Hub): $0.45 [0.17, 0.72] in 2023 only.
+
+  So most of what the tokens add to raw LMP is tracking the price level
+  (season, gas regime), not anticipating individual weather-driven spikes.
+  A small part may survive under the Henry Hub normaliser (2023), where the
+  New England premium is left in.
+- **Combining GFS + decoder** is slightly better than GFS in most cases,
+  significant in two of eight.
+- **Forecasts can beat "perfect knowledge" for price.** On B, the actual
+  area weather is worse than GFS ($0.37 and $0.73 higher MAE). Day-ahead
+  prices are set from the forecasts the market had, not from the weather
+  that happened, so a forecast is the more relevant feature.
+- **Hard days:** cold-snap MAE is 3-10 times the overall MAE (for example
+  about $95 in 2023 for A, driven by the February 3-4, 2023 cold outbreak).
+  No feature set reliably reduces it. The 2023 test year has only 4
+  cold-snap days, too few for the week bootstrap to be meaningful (its
+  intervals there are artificially narrow). On 2024 cold snaps (12 days)
+  intervals are wide and all include zero, except "+ actual area weather"
+  for A (worse). Heat-wave days: the decoder alone is often worse than GFS.
+- **Top 5% of price hours:** GFS and GFS + decoder are best or tied in
+  most versions; tokens tend to be worse there.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
