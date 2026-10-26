@@ -54,7 +54,8 @@ import xarray as xr
 from catboost import CatBoostRegressor, Pool
 
 import train_catboost_comparisons as dm
-from analyze_global_year import WEATHER_VARS, ZONES, zone_windows
+from analyze_global_year import WEATHER_VARS, ZONES, pca, per_zone_tokens, zone_windows
+from eval_tools import hard_day_labels, summarize
 
 PATCH_LAT = np.arange(40.25, 47.26, 1.0)               # Prithvi token box patch centres (see the .json sidecars)
 PATCH_LON = -74.6875 + 1.25 * np.arange(7)
@@ -171,6 +172,10 @@ def main() -> None:
                         help="Year-ahead folds: test on each of these, training only on the earlier years in --years")
     parser.add_argument("--load-lags", action="store_true", help="Add demand 24 h and 168 h earlier to every feature set")
     parser.add_argument("--prithvi-dir", type=Path, default=None, help="Folder with prithvi_tokens_ne_YEAR_lead24* (adds Prithvi blocks)")
+    parser.add_argument("--hard-days", action="store_true",
+                        help="Year-ahead evaluation with Prithvi tokens (each zone's 3 x 3 patch window, 50 PCs fitted on training "
+                             "times), weather-defined hard days, top-5%% system-demand hours and week-block bootstrap "
+                             "against '+ weather (issue) + GFS area'; saves predictions and daily errors")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     zn = list(ZONES)
@@ -220,6 +225,20 @@ def main() -> None:
                                       columns=["timestamp", "timestamp_local", "zone", "demand_MW"] + [f for f in dm.CALENDAR_FEATURES if f != "zone"]))
     for name in per_year[args.years[0]]:
         blocks[name] = np.concatenate([per_year[y][name] for y in args.years])
+    if args.hard_days:   # final-layer tokens of the sample issued 24 h before each target, per zone window
+        import json
+        toks = []
+        for y in args.years:
+            stem = args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24"
+            issue = pd.DatetimeIndex(json.loads(stem.with_suffix(".json").read_text())["timestamps"])
+            a = per_zone_tokens(stem.with_suffix(".npy"), zone_windows(PATCH_LAT, PATCH_LON))
+            t = pd.date_range(f"{y}-01-01", f"{y}-12-31 21:00", freq="3h")
+            pos = issue.get_indexer(t - pd.Timedelta(hours=24))
+            out = np.full((len(t), len(zn), a.shape[-1]), np.nan, np.float32)
+            out[pos >= 0] = a[pos[pos >= 0]]
+            toks.append(out)
+            print(f"{y}: tokens for {(pos >= 0).sum()}/{len(t)} target times", flush=True)
+        blocks["Prithvi tokens (raw)"] = np.concatenate(toks)
     skill = pd.DataFrame(skill)
     skill.to_csv(args.out_dir / "temperature_forecast_skill.csv", index=False)
     print("\n2 m temperature 24 h ahead against MERRA-2 (K); 'point' = the zone's grid cell, 'area' = the zone's patch window:")
@@ -247,6 +266,18 @@ def main() -> None:
     if args.prithvi_dir:
         combos += [["true area"], ["weather (issue)", "true area"], ["Prithvi point"], ["Prithvi area"],
                    ["weather (issue)", "Prithvi area"], ["weather (issue)", "GFS area", "Prithvi area"]]
+    if args.hard_days:
+        wi = "weather (issue)"
+        combos = [[], [wi], [wi, "GFS area"], [wi, "Prithvi area"], [wi, "Prithvi tokens"], [wi, "Prithvi area", "Prithvi tokens"],
+                  [wi, "GFS area", "Prithvi area"], [wi, "GFS area", "Prithvi tokens"], [wi, "GFS area", "Prithvi area", "Prithvi tokens"],
+                  [wi, "true area"]]
+        # hard days from the actual temperature over the zone areas, weighted by demand share (as for price)
+        share = df.groupby("zone")["demand_MW"].mean().reindex(zn).to_numpy()
+        t2m_sys = (blocks["true area"][:, :, 0] * (share / share.sum())).sum(axis=1)[np.clip(ti, 0, None)]
+        system_demand = df.groupby("timestamp")["demand_MW"].transform("sum").to_numpy()
+        iso = df["timestamp_local"].dt.isocalendar()
+        week = (iso.year.astype(str) + "-" + iso.week.astype(str)).to_numpy()
+        all_preds = []
     if lags is not None:
         combos = [[], ["weather (issue)"], ["weather (issue)", "GFS area"]]
         if args.prithvi_dir:
@@ -276,13 +307,24 @@ def main() -> None:
             if not tr.any() or not te.any():
                 continue
             print(f"\n[{scheme}, {label}] train {tr.sum()} rows, test {te.sum()} rows", flush=True)
+            fold_blocks = blocks
+            if args.hard_days:
+                train_times = np.zeros(len(targets), bool)
+                train_times[np.unique(ti[tr])] = True
+                fold_blocks = {k: v for k, v in blocks.items() if k != "Prithvi tokens (raw)"}
+                fold_blocks["Prithvi tokens"] = pca(blocks["Prithvi tokens (raw)"], train_times, 50)[0]
+                hard = hard_day_labels(df["timestamp_local"], t2m_sys, tr)
+                top = te & (system_demand >= np.quantile(system_demand[te], 0.95))
+                print(f"  hard days: thresholds {hard.attrs['thresholds_K']}; {hard.loc[te, 'cold_snap'].sum() // len(zn)} cold-snap and "
+                      f"{hard.loc[te, 'heat_wave'].sum() // len(zn)} heat-wave test hours", flush=True)
             for combo in combos:
                 X = df[dm.CALENDAR_FEATURES].copy()
                 if lags is not None:
                     X = pd.concat([X, lags], axis=1)
                 for b in combo:
                     tag = b.replace(" ", "_").replace("(", "").replace(")", "")
-                    X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None), zi], columns=[f"{tag}_{n}" for n in NAMES], index=df.index)], axis=1)
+                    cols = [f"{tag}_{n}" for n in (range(50) if b == "Prithvi tokens" else NAMES)]
+                    X = pd.concat([X, pd.DataFrame(fold_blocks[b][np.clip(ti, 0, None), zi], columns=cols, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False, thread_count=-1,
                                           train_dir=str(args.out_dir / "catboost_info"))
                 model.fit(Pool(X[tr], y_all[tr], cat_features=dm.CAT_FEATURES))
@@ -292,7 +334,30 @@ def main() -> None:
                 results.append({"split": scheme, "group": label, "feature_set": name, "mean_zone_mape_pct": byz.mean(),
                                 **{f"mape_{z}": byz.get(z, np.nan) for z in zn}})
                 print(f"  {name:62s} MAPE {byz.mean():5.2f}%   VT {byz.get('VT', np.nan):5.1f}%", flush=True)
+                if args.hard_days:
+                    all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "zone": zones[te], "feature_set": name,
+                                                   "actual": y_all[te], "pred": pred, "week": week[te], "top": top[te],
+                                                   "day": df["timestamp_local"].dt.normalize().to_numpy()[te],
+                                                   "is_holiday": df["is_holiday"].to_numpy()[te],
+                                                   "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
                 pd.DataFrame(results).to_csv(args.out_dir / ("demand_with_load_lags.csv" if lags is not None else "demand_gfs_comparison.csv"), index=False)
+    if args.hard_days:
+        preds = pd.concat(all_preds, ignore_index=True)
+        preds.to_parquet(args.out_dir / "demand_predictions.parquet", index=False)
+        summary = summarize(preds, "calendar + weather (issue) + GFS area", pct=True)
+        summary.to_csv(args.out_dir / "demand_summary.csv", index=False)
+        preds["ape"] = (preds["pred"] - preds["actual"]).abs() / preds["actual"] * 100
+        daily = preds.groupby(["test_year", "day", "feature_set"]).agg(mape=("ape", "mean"), cold_snap=("cold_snap", "max"),
+                                                                        heat_wave=("heat_wave", "max"), is_holiday=("is_holiday", "max")).reset_index()
+        daily.to_csv(args.out_dir / "demand_daily_mape.csv", index=False)
+        pd.set_option("display.width", 250)
+        for ty, g in summary.groupby("test_year"):
+            print(f"\n== demand, test {ty}: MAPE (%) overall / cold snaps / heat waves / top 5% system-demand hours; "
+                  f"difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)")
+            show = g[["feature_set", "MAE", "MAE_cold_snap", "MAE_heat_wave", "MAE_top5pct", "dMAE_vs_ref_all", "dMAE_vs_ref_all_ci",
+                      "dMAE_vs_ref_cold_snap", "dMAE_vs_ref_cold_snap_ci", "dMAE_vs_ref_heat_wave", "dMAE_vs_ref_heat_wave_ci"]].copy()
+            show["feature_set"] = show["feature_set"].str.replace("calendar", "", regex=False).str.strip(" +").replace("", "(calendar)")
+            print(show.round(2).to_string(index=False))
     print(f"\nWrote {args.out_dir}")
 
 

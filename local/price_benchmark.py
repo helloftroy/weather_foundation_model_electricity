@@ -38,6 +38,12 @@ Former two-target description, for reference:
 Errors are always on the price in $/MWh (for heat_rate, after multiplying
 back), all feature sets on the same hours.
 
+--gas-features adds the gas prices known at bid time as plain FEATURES in
+every feature set (used with the raw lmp target): Henry Hub for the last
+trading day on or before D-1, and/or the last Algonquin quote dated on or
+before D-2. The test: once the model is told the fuel regime directly, do
+the Prithvi tokens still help?
+
 Every feature set has calendar features and past values of its target, all
 known when the day-ahead market for the target day is bid: 24 h, 48 h and
 7 days before the target hour, and the mean of the 24 hours ending 24 h
@@ -61,7 +67,7 @@ from catboost import CatBoostRegressor, Pool
 
 import train_catboost_comparisons as dm
 from eval_tools import hard_day_labels, summarize
-from analyze_global_year import ZONES, box_tokens, pca
+from analyze_global_year import ZONES, box_pixels, box_tokens, pca
 from gfs_demand_benchmark import NAMES, gfs_for_targets, merra_features, prithvi_features, zone_features
 
 CALENDAR = [f for f in dm.CALENDAR_FEATURES if f != "zone"]
@@ -78,6 +84,12 @@ def main() -> None:
     parser.add_argument("--prithvi-dir", type=Path, default=Path("data"))
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--iterations", type=int, default=3000)
+    parser.add_argument("--gas-features", nargs="*", default=[], choices=["henryhub", "algonquin"],
+                        help="Add gas prices known at bid time as FEATURES in every feature set: Henry Hub for the last "
+                             "trading day <= D-1, the last Algonquin quote dated <= D-2 (carried forward)")
+    parser.add_argument("--input-control", action="store_true",
+                        help="Add a control block: Prithvi's own MERRA-2 input fields at issue time (all 160 channels, "
+                             "averaged over the box, 50 PCs fitted on training times), built exactly like the tokens")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
@@ -118,6 +130,11 @@ def main() -> None:
         tok_t = np.full((len(t), tok.shape[1]), np.nan, np.float32)
         tok_t[pos >= 0] = tok[pos[pos >= 0]]
         year_blocks["Prithvi tokens (raw)"] = tok_t
+        if args.input_control:
+            inp = box_pixels(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24_inputs.npy")
+            inp_t = np.full((len(t), inp.shape[1]), np.nan, np.float32)
+            inp_t[pos >= 0] = inp[pos[pos >= 0]]
+            year_blocks["MERRA-2 fields (raw)"] = inp_t
         for k, v in year_blocks.items():
             sys_blocks.setdefault(k, []).append(v)
         targets = targets.append(t)
@@ -137,6 +154,9 @@ def main() -> None:
             "hr_algonquin": alg.reindex((day - pd.Timedelta(days=2)).to_numpy(), method="ffill").to_numpy(),
             "lmp_rel7d": trailing.reindex(df["timestamp"] - pd.Timedelta(hours=24)).to_numpy(),
             "lmp": np.ones(len(df)), "heat_rate": df["gas"].to_numpy()}
+    gas_cols = [f"gas_known_{g}" for g in args.gas_features]
+    for g in args.gas_features:
+        df[f"gas_known_{g}"] = norm["hr_" + g]
     for t in args.targets:
         df[f"N_{t}"] = norm[t]
         df[f"y_{t}"] = df["lmp_total"] / df[f"N_{t}"]
@@ -163,6 +183,8 @@ def main() -> None:
         ok &= ~np.isnan(v[np.clip(ti, 0, None)]).any(axis=1)
     for t in args.targets:
         ok &= df[lag_cols[t]].notna().all(axis=1).to_numpy()
+    for col in gas_cols:
+        ok &= df[col].notna().to_numpy()
     for t in args.targets:
         ok &= df[f"N_{t}"].notna().to_numpy() & (df[f"N_{t}"] > 0).to_numpy()
     print(f"{ok.sum()} of {len(df)} hours usable; heat rate median {df.loc[ok, 'heat_rate'].median():.1f} MMBtu/MWh "
@@ -171,7 +193,11 @@ def main() -> None:
     combos = [[], ["weather (issue)"], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi area"],
               ["weather (issue)", "GFS area", "Prithvi area"], ["weather (issue)", "Prithvi tokens"],
               ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "Prithvi area", "Prithvi tokens"],
-              ["weather (issue)", "true area"]]
+              ["weather (issue)", "Prithvi area", "Prithvi tokens"], ["weather (issue)", "true area"]]
+    if args.input_control:
+        combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
+                  ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
+                  ["weather (issue)", "GFS area", "MERRA-2 fields", "Prithvi tokens"]]
     # Hard days from the actual temperature over the zone areas (system-weighted), thresholds from training years.
     t2m_true = sys_blocks["true area"][np.clip(ti, 0, None), 0]
     week = (df["timestamp_local"].dt.isocalendar().year.astype(str) + "-" + df["timestamp_local"].dt.isocalendar().week.astype(str)).to_numpy()
@@ -182,8 +208,10 @@ def main() -> None:
         tr, te = ok & (year < test_year) & (year >= min(args.years)), ok & (year == test_year)
         train_times = np.zeros(len(targets), bool)
         train_times[np.unique(ti[tr])] = True
-        blocks = {k: v for k, v in sys_blocks.items() if k != "Prithvi tokens (raw)"}
+        blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
         blocks["Prithvi tokens"] = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)[0]
+        if args.input_control:
+            blocks["MERRA-2 fields"] = pca(sys_blocks["MERRA-2 fields (raw)"], train_times, 50)[0]
         hard = hard_day_labels(df["timestamp_local"], t2m_true, tr)
         print(f"  hard days (test {test_year}): thresholds {hard.attrs['thresholds_K']}; "
               f"{hard.loc[te, 'cold_snap'].sum()} cold-snap and {hard.loc[te, 'heat_wave'].sum()} heat-wave test hours", flush=True)
@@ -192,9 +220,9 @@ def main() -> None:
             print(f"\n[{target}, test {test_year}, train {min(args.years)}-{test_year - 1}] train {tr.sum()} h, test {te.sum()} h; "
                   f"test price mean ${lmp_all[te].mean():.2f}, sd ${lmp_all[te].std():.2f}", flush=True)
             for combo in combos:
-                X = df[CALENDAR + lag_cols[target]].copy()
+                X = df[CALENDAR + lag_cols[target] + gas_cols].copy()
                 for b in combo:
-                    names = [f"{b}_{n}" for n in (NAMES if b != "Prithvi tokens" else range(50))]
+                    names = [f"{b}_{n}" for n in (NAMES if b not in ("Prithvi tokens", "MERRA-2 fields") else range(50))]
                     X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
                                           thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
@@ -204,7 +232,7 @@ def main() -> None:
                 err = price - lmp_all[te]
                 mae = float(np.abs(err).mean())
                 r2 = float(1 - (err ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum())
-                name = "calendar + past values" + "".join(f" + {b}" for b in combo)
+                name = "calendar + past values" + (" + known gas" if gas_cols else "") + "".join(f" + {b}" for b in combo)
                 all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name,
                                                "actual": lmp_all[te], "pred": price, "week": week[te],
                                                "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
@@ -214,7 +242,7 @@ def main() -> None:
                 pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)
     preds = pd.concat(all_preds, ignore_index=True)
     preds.to_parquet(args.out_dir / "price_predictions.parquet", index=False)
-    ref = "calendar + past values + weather (issue) + GFS area"
+    ref = "calendar + past values" + (" + known gas" if gas_cols else "") + " + weather (issue) + GFS area"
     summary = summarize(preds, ref, group_cols=("target", "test_year"))
     summary.to_csv(args.out_dir / "price_summary.csv", index=False)
     pd.set_option("display.width", 250)
@@ -223,7 +251,7 @@ def main() -> None:
               f"difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)")
         show = g[["feature_set", "MAE", "MAE_cold_snap", "MAE_heat_wave", "MAE_top5pct", "dMAE_vs_ref_all", "dMAE_vs_ref_all_ci",
                   "dMAE_vs_ref_cold_snap", "dMAE_vs_ref_cold_snap_ci"]].copy()
-        show["feature_set"] = show["feature_set"].str.replace("calendar + past values", "", regex=False).str.strip(" +").replace("", "(calendar + past values)")
+        show["feature_set"] = show["feature_set"].str.replace("calendar + past values" + (" + known gas" if gas_cols else ""), "", regex=False).str.strip(" +").replace("", "(calendar + past values)")
         print(show.round(2).to_string(index=False))
     print(f"\nWrote {args.out_dir}")
 

@@ -1436,6 +1436,7 @@ draws) of paired hourly differences in absolute error, against
   - A' (Algonquin): none;
   - A (Henry Hub): $0.45 [0.17, 0.72] in 2023 only.
 
+  (Revised below: with gas given explicitly as a feature, the gain survives.)
   So most of what the tokens add to raw LMP is tracking the price level
   (season, gas regime), not anticipating individual weather-driven spikes.
   A small part may survive under the Henry Hub normaliser (2023), where the
@@ -1455,6 +1456,134 @@ draws) of paired hourly differences in absolute error, against
   for A (worse). Heat-wave days: the decoder alone is often worse than GFS.
 - **Top 5% of price hours:** GFS and GFS + decoder are best or tied in
   most versions; tokens tend to be worse there.
+
+## Price: known gas as a feature, and a raw-input control (2026-10-26)
+
+Raw day-ahead hub LMP, 24 h ahead, year-ahead folds (test 2023 trained on
+2021-22; test 2024 trained on 2021-23), CatBoost as before (3,000 trees,
+depth 6, learning rate 0.05, one seed). Every feature set has calendar
+features (hour, day of week, day of year, month, weekend, federal holiday;
+no year), past prices (24 h, 48 h, 7 days, mean of the 24 h ending 24 h
+earlier) and, new here, **gas prices known at bid time as features**: Henry
+Hub for the last trading day on or before D-1, optionally also the last
+Algonquin quote dated on or before D-2 (carried forward). Errors in $/MWh;
+"Δ vs GFS" is the paired difference from "+ old weather + GFS" with a 95%
+week-block bootstrap interval (negative = better). Script:
+`local/price_benchmark.py --targets lmp --gas-features ... [--input-control]`;
+outputs `results/price_known_gas/`.
+
+This replaces normalisation as the test of whether the tokens only encode
+the fuel regime: the model is told the gas price directly.
+
+MAE, with Henry Hub known (2023 / 2024):
+
+| Feature set (all + calendar + past prices + Henry Hub) | MAE | Δ vs GFS 2023 | Δ vs GFS 2024 |
+|---|---|---|---|
+| no weather | 12.41 / 12.63 | +4.01 | +5.02 |
+| + old weather | 11.10 / 12.01 | +2.69 | +4.41 |
+| + old weather + GFS (reference) | 8.41 / 7.60 | | |
+| + old weather + decoder alone | 8.59 / 7.84 | +0.18 [-0.08, +0.47] | +0.23 [-0.05, +0.56] |
+| + old weather + tokens alone | 8.64 / 7.47 | +0.23 [-0.23, +0.72] | -0.13 [-0.65, +0.42] |
+| + old weather + decoder + tokens | 7.86 / 6.99 | -0.55 [-1.00, -0.11] | -0.62 [-0.95, -0.25] |
+| + GFS + decoder | 8.21 / 7.65 | -0.20 [-0.40, -0.01] | +0.05 [-0.22, +0.30] |
+| + GFS + tokens | 7.55 / 6.74 | **-0.86 [-1.33, -0.45]** | **-0.86 [-1.23, -0.52]** |
+| + GFS + decoder + tokens | 7.47 / 6.80 | -0.94 [-1.43, -0.50] | -0.80 [-1.11, -0.50] |
+| + old weather + actual area weather | 8.69 / 8.03 | +0.28 [+0.02, +0.51] | +0.42 [+0.10, +0.78] |
+
+With Henry Hub and Algonquin both known, the token gain on top of GFS is
+-0.80 [-1.34, -0.33] (2023) and -0.70 [-1.10, -0.34] (2024).
+
+**The token gain survives explicit gas.** Without gas it was -1.08 / -0.70;
+with Henry Hub it is -0.86 / -0.86 (about 10-11% of MAE). So the tokens are
+not just a gas-regime proxy, and day of year and month are already in the
+calendar, so they are not just "winter" either.
+
+**Control: Prithvi's own MERRA-2 input fields.** Same construction as the
+tokens (all 160 input channels at issue time, averaged over the New England
+box, 50 principal components fitted on training times), with Henry Hub known:
+
+| | 2023 | 2024 |
+|---|---|---|
+| + GFS + MERRA-2 fields, Δ vs GFS | -0.76 [-1.24, -0.27] | -0.39 [-0.68, -0.10] |
+| + GFS + tokens, Δ vs GFS | -0.86 | -0.86 |
+| tokens vs MERRA-2 fields (both + GFS) | -0.09 [-0.43, +0.24] | **-0.48 [-0.69, -0.26]** |
+| + tokens on top of GFS + MERRA-2 fields | -0.20 [-0.50, +0.05] | **-0.40 [-0.62, -0.18]** |
+
+- In 2023, a broad snapshot of the current atmosphere (the raw analysis)
+  gives nearly all of the token gain. That is information the market
+  already has at bid time; it is not something only Prithvi's processing
+  adds.
+- In 2024, the tokens are significantly better than the raw fields and add
+  to them. So a Prithvi-specific contribution exists in one of two years.
+- On their own (with old weather, no GFS), neither the decoder nor the
+  tokens beat GFS; the gains come from combining them with GFS.
+- Revises the v2 reading ("mostly a price-level effect"): explicit gas does
+  not remove the gain; normalising the target changed the learning
+  problem rather than isolating the regime.
+
+Caveats: one seed; 50 extra features versus 6; the MERRA-2 analysis at
+issue time is a reanalysis, not an operational analysis (see the GEOS-FP
+note above).
+
+## Demand: hard days, tokens, and where the best model struggles (2026-10-26)
+
+Pooled zonal demand, 24 h ahead, year-ahead folds as above, no load lags.
+Calendar features: hour, day of week, day of year, month, weekend, federal
+holiday, zone. New block: **Prithvi tokens per zone** (final layer, the
+zone's 3 x 3 patch window, 50 principal components fitted on training
+times). Hard days defined from the actual area temperature weighted by
+demand share, with training-year thresholds (cold snap: daily mean at or
+below the 5th percentile, 268.5 K / 269.9 K; heat wave: daily maximum at or
+above the 95th, 299.5 K / 299.0 K). 2023 has 4 cold-snap and 6 heat-wave
+test days; 2024 has 14 and 15. Top 5% = the 5% of test hours with the
+highest system demand. MAPE (%), mean over zones. Script:
+`local/gfs_demand_benchmark.py --hard-days`; outputs
+`results/demand_hard_days/` (predictions, summary, daily MAPE).
+
+| Feature set (all + calendar + old weather) | MAPE 2023 / 2024 | Δ vs GFS 2023 | Δ vs GFS 2024 | cold snaps 2023 / 2024 | heat waves 2023 / 2024 | top 5% 2023 / 2024 |
+|---|---|---|---|---|---|---|
+| calendar only (no weather) | 11.27 / 11.55 | | | 10.79 / 11.47 | 18.15 / 16.07 | 14.25 / 15.55 |
+| old weather only | 7.58 / 7.45 | +3.04 | +2.72 | 9.78 / 7.66 | 15.66 / 8.90 | 11.78 / 10.01 |
+| + GFS (reference) | 4.54 / 4.73 | | | 6.20 / 4.65 | 5.17 / 4.95 | 5.95 / 5.17 |
+| + decoder alone | 4.67 / 4.92 | +0.13 [+0.03, +0.23] | +0.19 [+0.08, +0.31] | 5.98 / 4.78 | 5.99 / 5.63 | 6.22 / 5.98 |
+| + tokens alone | 5.77 / 6.22 | +1.23 [+1.04, +1.41] | +1.49 [+1.27, +1.73] | 6.50 / 5.88 | 6.48 / 6.39 | 7.08 / 7.40 |
+| + decoder + tokens | 4.78 / 4.94 | +0.24 | +0.20 | 5.16 / 5.03 | 5.48 / 5.15 | 6.14 / 5.54 |
+| + GFS + decoder | **4.45 / 4.66** | -0.09 [-0.16, -0.03] | -0.08 [-0.12, -0.03] | 6.04 / 4.67 | 4.99 / 5.00 | 5.80 / 5.32 |
+| + GFS + tokens | 4.72 / 4.77 | +0.18 [+0.07, +0.30] | +0.03 [-0.10, +0.17] | 4.91 / 4.82 | 5.05 / 4.80 | 5.88 / 4.98 |
+| + GFS + decoder + tokens | 4.59 / 4.67 | +0.05 | -0.06 | 4.89 / 4.84 | 5.07 / 4.78 | 5.77 / 4.91 |
+| + actual area weather (ceiling) | 4.49 / 4.72 | -0.05 [-0.15, +0.05] | -0.01 [-0.10, +0.08] | 6.06 / 4.09 | 4.84 / 4.60 | 5.64 / 5.39 |
+
+- For demand the decoder is the useful Prithvi output; tokens alone are
+  much worse (+1.2 to +1.5 points), and add nothing on top of GFS overall.
+- GFS + decoder is the best model in both years, by a small but
+  significant 0.08-0.09 points, essentially at the actual-weather ceiling.
+- Cold snaps: tokens on top of GFS cut 2023 cold-snap MAPE from 6.2% to
+  4.9% (interval excludes zero), but that is 4 days (the February 3-4, 2023
+  outbreak), too few for the week bootstrap to be trusted; in 2024 (14
+  days) there is no gain. Heat waves and the top 5% of hours: no reliable
+  Prithvi gain over GFS.
+
+**Where the best model struggles.** The 12 worst days of GFS + decoder
+(daily MAPE 8-14%, against about 4.5% overall) are mostly not weather days:
+
+- 2023: Memorial Day (14.0%), Christmas, Thanksgiving and the day after
+  (not flagged as a holiday), July 3-4, plus summer weekends and December
+  18 (the wind storm with widespread outages in Maine). Only one is a cold
+  snap (February 4).
+- 2024: spring days in April-May and summer days in June, Juneteenth, one
+  cold-snap Sunday in December.
+- The actual-weather model is just as bad on these days (for example 11.7%
+  on Memorial Day 2023), so better weather input cannot fix them. They are
+  calendar effects (holidays, bridge days, weekends) and events such as
+  outages; plausibly behind-the-meter solar on clear spring days in 2024
+  (not tested).
+- Does Prithvi help on the hardest days? Picking the worst 5% of days with
+  the actual-weather model (neutral between GFS and Prithvi): 2023 GFS
+  8.28%, + decoder 8.32%, + tokens 8.71%; 2024 GFS 7.26%, + decoder 7.16%,
+  + tokens 6.92%. No consistent help. (Picking days by GFS's own error
+  favours any other model by regression to the mean, so it is not used.)
+- Cheap next step suggested by this: a bridge-day / holiday-adjacent
+  feature (day after Thanksgiving, July 3, December 24/26).
 
 ## Still to do (2020 onward)
 
