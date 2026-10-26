@@ -1302,6 +1302,32 @@ and fits the much smaller gap over the area. Fair versions are still to do:
   MERRA-2 grid points exactly) or the GFS analysis. If it still matches
   GFS then, that is the strong result.
 
+### Demand with lagged load (2026-10-26)
+
+Every feature set also gets the zone's own demand 24 h and 168 h before the
+target hour. Both are known when a day-ahead forecast is made.
+`gfs_demand_benchmark.py --load-lags`; output:
+`results/forecast_benchmark_2021_2024/demand_with_load_lags.csv`. Same test
+hours as above. The first week of 2021 drops out of training (no lags).
+
+| Features (all with calendar) | Test 2023 | Test 2024 | Without lags, 2023 / 2024 |
+|---|---|---|---|
+| + load lags | 6.84% | 6.95% | 11.27% / 11.55% (calendar) |
+| + load lags + weather 24 h old | 6.43% | 6.57% | 7.58% / 7.45% |
+| + load lags + old weather + GFS area | 3.79% | 3.96% | 4.54% / 4.73% |
+| + load lags + old weather + Prithvi area | 4.01% | 4.13% | 4.67% / 4.92% |
+| + load lags + old weather + GFS + Prithvi | 3.75% | **3.87%** | 4.45% / 4.66% |
+| + load lags + old weather + actual area weather (ceiling) | **3.74%** | **3.87%** | 4.49% / 4.72% |
+
+- **Lagged load helps every model** by about 0.7-0.8 points, and alone
+  nearly halves the calendar-only error. Yesterday's weather adds little
+  once yesterday's load is known (6.84% to 6.43%).
+- **A forecast is still essential.** Adding GFS or Prithvi on top of the
+  lags cuts error from about 6.5% to about 4%.
+- **The ranking is unchanged.** With lags, GFS is at the ceiling (within
+  0.05-0.09 points) and Prithvi is about 0.2 points behind GFS. Both
+  together equal the ceiling.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
