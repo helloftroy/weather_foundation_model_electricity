@@ -1230,6 +1230,72 @@ area average in a different year.
   The two forecasts look broadly similar. A head-to-head needs lead-24
   Prithvi runs for 2021-2024.
 
+# Head-to-head: Prithvi decoder against GFS, 2021-2024 (2026-10-26)
+
+Lead-24 Prithvi runs for 2021-2024 on the global grid. Every year was
+checked: Jan 1 to Dec 30 issue times, no gaps, no NaNs. The decoder's
+normalised output is converted to physical units with one scale and offset
+per variable. These were recovered from the data: the model's input pixel
+on each zone's cell matches the weather table exactly (correlation 1.0).
+Script: `local/gfs_demand_benchmark.py --prithvi-dir`; outputs in
+`results/forecast_benchmark_2021_2024/`. Every forecast and feature set is
+scored on the same times and hours.
+
+### 2 m temperature 24 h ahead, against MERRA-2 (RMSE, K)
+
+| | 2021 | 2022 | 2023 | 2024 |
+|---|---|---|---|---|
+| Point (zone grid cell): GFS | 2.10 | 2.12 | 2.09 | 2.08 |
+| Point: Prithvi decoder | 1.31 | 1.40 | 1.34 | 1.33 |
+| Point: persistence | 3.82 | 4.53 | 3.77 | 3.49 |
+| Area (zone patch window): GFS | 1.04 | 1.01 | 1.02 | 1.00 |
+| Area: Prithvi decoder | 0.84 | 0.92 | 0.86 | 0.86 |
+| Area: persistence | 3.13 | 3.84 | 3.14 | 2.79 |
+
+**This favours Prithvi.** The truth here is MERRA-2, which Prithvi was
+trained on, starts from, and forecasts on the grid of. GFS starts from its
+own analysis on a finer grid with different terrain, so it would differ from
+MERRA-2 even at hour 0. That likely explains much of its single-cell error,
+and fits the much smaller gap over the area. Fair versions are still to do:
+1. GFS hour-0 analysis against MERRA-2, to measure the baseline
+   disagreement.
+2. Scoring both forecasts against independent station observations.
+
+### Demand, year-ahead (mean zone MAPE)
+
+| Features | Test 2023 (train 2021-22) | Test 2024 (train 2021-23) |
+|---|---|---|
+| Calendar | 11.27% | 11.55% |
+| + weather 24 h old (no forecast) | 7.58% | 7.45% |
+| + actual weather at T, one grid cell (ceiling) | 4.97% | 5.03% |
+| + actual weather at T, zone area (ceiling) | 4.78% | 4.88% |
+| + GFS point | 5.18% | 5.13% |
+| + GFS area | 4.94% | 5.00% |
+| + Prithvi decoder point | 4.86% | 5.04% |
+| + Prithvi decoder area | 4.87% | 4.95% |
+| + old weather + actual area weather (ceiling) | 4.49% | 4.72% |
+| + old weather + GFS area | 4.54% | 4.73% |
+| + old weather + Prithvi area | 4.67% | 4.92% |
+| + old weather + GFS area + Prithvi area | **4.45%** | **4.66%** |
+
+- **Both forecasts get demand to the perfect-knowledge ceiling.** With
+  yesterday's weather, GFS reaches 4.54% / 4.73% and Prithvi 4.67% / 4.92%,
+  against ceilings of 4.49% / 4.72%. Without a forecast it is 7.5%.
+- **GFS is slightly ahead when combined with stale weather** (by 0.1-0.2
+  points). Alone, they are level. These gaps are about the size of
+  seed-to-seed noise seen earlier (0.1-0.3 points).
+- **Both together are best in both years**, a little below the ceiling:
+  the two forecasts carry partly different information. The gain over GFS
+  alone is small (0.07-0.09 points).
+- **Prithvi's better temperature score against MERRA-2 does not carry over
+  to demand.** Both forecasts are already close to the ceiling, so there is
+  little room to separate them, and the temperature comparison is biased
+  (above).
+- **Practical caveat:** the Prithvi forecast needs MERRA-2 as input, which
+  is published weeks late. GFS is available in real time. In operation,
+  Prithvi would have to start from a real-time analysis (for example GFS's
+  own) instead.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
