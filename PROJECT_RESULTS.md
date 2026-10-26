@@ -1291,10 +1291,16 @@ and fits the much smaller gap over the area. Fair versions are still to do:
   to demand.** Both forecasts are already close to the ceiling, so there is
   little room to separate them, and the temperature comparison is biased
   (above).
-- **Practical caveat:** the Prithvi forecast needs MERRA-2 as input, which
-  is published weeks late. GFS is available in real time. In operation,
-  Prithvi would have to start from a real-time analysis (for example GFS's
-  own) instead.
+- **The starting point favours Prithvi.** Each Prithvi forecast starts
+  from MERRA-2, a reanalysis made afterwards with hindsight and more
+  observations than GFS had when it ran in real time. So "matches GFS" is an
+  upper bound on what Prithvi would do in operation. MERRA-2 is also
+  published weeks late, so it cannot be used in real time.
+- **The fair test:** start Prithvi from an operational analysis available
+  in real time, such as NASA's GEOS-FP (same model family and file layout as
+  MERRA-2; archive 2014 to now, 0.25 x 0.3125 degree, which contains the
+  MERRA-2 grid points exactly) or the GFS analysis. If it still matches
+  GFS then, that is the strong result.
 
 ## Still to do (2020 onward)
 
