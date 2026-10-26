@@ -18,6 +18,8 @@ export PYTHONUNBUFFERED=1
 # Override at submit time: sbatch --export=ALL,YEAR=2023 ...
 YEAR="${YEAR:-2021}"
 WORKERS="${WORKERS:-8}"
+# Optional wider crop for regional features: BOX="32 50 -90 -64" (writes gfs_wide_YEAR.nc).
+BOX="${BOX:-}"
 echo "Year: ${YEAR}"
 echo "Job started: $(date)"
 echo "Host: $(hostname)"
@@ -42,6 +44,7 @@ python -c "import eccodes" 2>/dev/null || pip install --quiet eccodes eccodeslib
 python "${REPO_ROOT}/src/gfs/download_gfs_forecasts.py" \
   --year "${YEAR}" \
   --out-dir "${SCRATCH_ROOT}/data/gfs" \
-  --workers "${WORKERS}"
+  --workers "${WORKERS}" \
+  ${BOX:+--box ${BOX} --name ${NAME:-wide}}
 
 echo "Job finished: $(date)"

@@ -125,7 +125,7 @@ def decode(msg_bytes):
     return vals, np.linspace(lat0, lat1, nj), np.linspace(lon0, lon1, ni)
 
 
-def fetch_one(run, fhour, out_dir):
+def fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE):
     out = out_dir / f"gfs_{run:%Y%m%d%H}_f{fhour:03d}.npz"
     if out.exists():
         return out, "kept"
@@ -146,8 +146,8 @@ def fetch_one(run, fhour, out_dir):
         except Exception as e:  # noqa: BLE001 - an undecodable field skips this forecast hour, not the job
             print(f"  could not decode {name} in {url.rsplit('/', 1)[-1]}: {e}", flush=True)
             return None, "bad"
-        r = (lats >= LAT_RANGE[0]) & (lats <= LAT_RANGE[1])
-        c = (lons >= LON_RANGE[0]) & (lons <= LON_RANGE[1])
+        r = (lats >= lat_range[0]) & (lats <= lat_range[1])
+        c = (lons >= lon_range[0]) & (lons <= lon_range[1])
         arrays[name] = vals[np.ix_(r, c)].astype(np.float32)
         desc[name] = text
         lat, lon = lats[r], lons[c]
@@ -188,18 +188,25 @@ def main() -> None:
     parser.add_argument("--end", default=None, help="Last run date (default: Dec 31 of the year)")
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--box", type=float, nargs=4, default=None, metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
+                        help="Crop box in degrees (longitudes -180..180); default is the New England box. "
+                             "Output then goes to gfs_<name>_YEAR.nc with --name")
+    parser.add_argument("--name", default="ne", help="Label for the output files (default 'ne')")
     args = parser.parse_args()
     start = pd.Timestamp(args.start or f"{args.year - 1}-12-30")
     end = pd.Timestamp(args.end or f"{args.year}-12-31") + pd.Timedelta(hours=18)
     runs = [r for r in pd.date_range(start, end, freq="6h") if r.hour in RUNS]
-    raw_dir = args.out_dir / f"gfs_ne_{args.year}_parts"
+    lat_range, lon_range = LAT_RANGE, LON_RANGE
+    if args.box:
+        lat_range, lon_range = (args.box[0], args.box[1]), (args.box[2] % 360, args.box[3] % 360)
+    raw_dir = args.out_dir / f"gfs_{args.name}_{args.year}_parts"
     raw_dir.mkdir(parents=True, exist_ok=True)
     jobs = [(r, f) for r in runs for f in FHOURS]
     print(f"{len(runs)} runs x {len(FHOURS)} forecast hours = {len(jobs)} files, {args.workers} at a time", flush=True)
     counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0}
     missing = []
     with ThreadPoolExecutor(args.workers) as pool:
-        futures = {pool.submit(fetch_one, r, f, raw_dir): (r, f) for r, f in jobs}
+        futures = {pool.submit(fetch_one, r, f, raw_dir, lat_range, lon_range): (r, f) for r, f in jobs}
         for i, fut in enumerate(as_completed(futures), 1):
             _, status = fut.result()
             counts[status] += 1
@@ -209,7 +216,7 @@ def main() -> None:
                 print(f"...{i}/{len(jobs)} ({counts})", flush=True)
     if missing:
         print(f"{len(missing)} forecast files missing from the archive or unreadable, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
-    combine(raw_dir, args.year, args.out_dir / f"gfs_ne_{args.year}.nc")
+    combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}.nc")
 
 
 if __name__ == "__main__":

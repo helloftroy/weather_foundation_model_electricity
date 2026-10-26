@@ -144,6 +144,9 @@ def main() -> None:
                         metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="global_emb_* is the mean of the patch tokens in this box (default: the 30-60N, 90-50W "
                              "area that earlier regional runs pooled over)")
+    parser.add_argument("--wide-box", type=float, nargs=4, default=None, metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
+                        help="Also save the decoder output and the true inputs for T2M, QV2M, U10M, V10M, SWGNT over this larger "
+                             "box, at full resolution (*_wide_recon5.npy, *_wide_inputs5.npy); for regional weather features")
     parser.add_argument("--token-box", type=float, nargs=4, default=[40.0, 48.0, -75.0, -66.25],
                         metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="Patches whose centres fall in this box are saved (default: New England)")
@@ -367,6 +370,17 @@ def main() -> None:
         inputs_out = np.lib.format.open_memmap(f"{stem}_inputs.npy", mode="w+", dtype=np.float16, shape=(n_samples, p["in_channels"], n_px_lat, n_px_lon))
         recon_out = np.lib.format.open_memmap(f"{stem}_recon_sfc.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_sfc, n_px_lat, n_px_lon))
         climate_out = np.lib.format.open_memmap(f"{stem}_climate_sfc.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_sfc, n_px_lat, n_px_lon))
+        wide = None
+        if args.wide_box is not None:
+            w_lat = np.where((grid_lats >= args.wide_box[0]) & (grid_lats <= args.wide_box[1]))[0]
+            w_lon = np.where((grid_lons >= args.wide_box[2]) & (grid_lons <= args.wide_box[3]))[0]
+            wide_ch = [SURFACE_VARS.index(v) for v in ("T2M", "QV2M", "U10M", "V10M", "SWGNT")]
+            wide_px = (slice(None), wide_ch, slice(int(w_lat[0]), int(w_lat[-1]) + 1), slice(int(w_lon[0]), int(w_lon[-1]) + 1))
+            wshape = (n_samples, len(wide_ch), len(w_lat), len(w_lon))
+            wide = {"recon": np.lib.format.open_memmap(f"{stem}_wide_recon5.npy", mode="w+", dtype=np.float16, shape=wshape),
+                    "inputs": np.lib.format.open_memmap(f"{stem}_wide_inputs5.npy", mode="w+", dtype=np.float16, shape=wshape)}
+            print(f"Wide box: {wshape[2]} x {wshape[3]} pixels, lat {grid_lats[w_lat[0]]}..{grid_lats[w_lat[-1]]}, "
+                  f"lon {grid_lons[w_lon[0]]}..{grid_lons[w_lon[-1]]} ({2 * np.prod(wshape) * 2 / 1e9:.2f} GB for both files)")
         norm_mu = model.input_scalers_mu.reshape(1, -1, 1, 1)
         norm_sd = model.input_scalers_sigma.reshape(1, -1, 1, 1) + model.input_scalers_epsilon
         print(f"Also saving: normalised inputs {inputs_out.shape}, decoder output and climatology for the {n_sfc} surface variables, "
@@ -421,6 +435,9 @@ def main() -> None:
                 recon = (model_out - norm_mu) / norm_sd
                 inputs_out[idx:idx + b] = f16(x_now[px])
                 recon_out[idx:idx + b] = f16(recon[px][:, :n_sfc])
+                if wide is not None:
+                    wide["recon"][idx:idx + b] = f16(recon[wide_px])
+                    wide["inputs"][idx:idx + b] = f16(x_now[wide_px])
                 climate_out[idx:idx + b] = f16(((batch["climate"] - norm_mu) / norm_sd)[px][:, :n_sfc])
                 if idx == 0:
                     target = (batch["y"] - norm_mu) / norm_sd
@@ -449,7 +466,7 @@ def main() -> None:
     print(f"Wrote {len(df)} rows x {len(df.columns)} cols to {args.out_parquet}")
 
     if tokens_out is not None:
-        for arr in [tokens_out, inputs_out, recon_out, climate_out, *layer_out.values()]:
+        for arr in [tokens_out, inputs_out, recon_out, climate_out, *layer_out.values(), *(wide.values() if wide else [])]:
             arr.flush()
         meta = {
             "layout": "[time, lat_patch, lon_patch, embed_dim], float16; encoder output tokens, un-pooled, mask units in map order",
@@ -471,6 +488,11 @@ def main() -> None:
             "patch_lat_centers": lat_c[r0:r1].tolist(),
             "patch_lon_centers": lon_c[c0:c1].tolist(),
             "token_box": list(args.token_box),
+            **({"wide": {"box": list(args.wide_box), "channels": ["T2M", "QV2M", "U10M", "V10M", "SWGNT"],
+                         "recon_file": f"{stem.name}_wide_recon5.npy", "inputs_file": f"{stem.name}_wide_inputs5.npy",
+                         "pixel_lats": grid_lats[wide_px[2]].tolist(), "pixel_lons": grid_lons[wide_px[3]].tolist(),
+                         "layout": "[time, channel, lat_pixel, lon_pixel], normalised; recon = decoder output for the target time, "
+                                   "inputs = true values at the issue time"}} if wide else {}),
         }
         args.out_tokens.with_suffix(".json").write_text(json.dumps(meta))
         print(f"Wrote patch tokens {tokens_out.shape} to {args.out_tokens}")

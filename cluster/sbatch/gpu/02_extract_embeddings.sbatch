@@ -73,6 +73,9 @@ OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
+# Optional larger box for regional weather features, "LAT_MIN LAT_MAX LON_MIN LON_MAX",
+# e.g. WIDE_BOX="32 50 -90 -64" (Northeast, mid-Atlantic, Ohio valley). Empty = off.
+WIDE_BOX="${WIDE_BOX:-}"
 
 python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --weights-dir "${WEIGHTS_DIR}" \
@@ -85,6 +88,7 @@ python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --out-parquet "${OUT_PARQUET}" \
   --out-tokens "${OUT_TOKENS}" \
   --lead-time "${LEAD_TIME}" \
-  --layers ${LAYERS}
+  --layers ${LAYERS} \
+  ${WIDE_BOX:+--wide-box ${WIDE_BOX}}
 
 echo "Job finished: $(date)"
