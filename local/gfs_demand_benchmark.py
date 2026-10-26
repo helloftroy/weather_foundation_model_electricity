@@ -33,6 +33,11 @@ The decoder works in normalised units; they are converted back with one
 scale and offset per variable, recovered from the data (the model's input
 pixel on a zone's cell matches the weather table exactly, correlation 1).
 
+With --load-lags, the feature sets instead all include the zone's own
+demand 24 h and 168 h (one week) before the target hour. Both are known when
+a day-ahead forecast is made, so this asks what the forecasts add on top of
+recent load.
+
 Also reports GFS 2 m temperature error against MERRA-2 at the zone cells,
 next to persistence, as a direct forecast-quality check.
 
@@ -164,6 +169,7 @@ def main() -> None:
     parser.add_argument("--splits", nargs="+", default=["blocked", "chronological", "year_ahead"])
     parser.add_argument("--test-years", type=int, nargs="+", default=None,
                         help="Year-ahead folds: test on each of these, training only on the earlier years in --years")
+    parser.add_argument("--load-lags", action="store_true", help="Add demand 24 h and 168 h earlier to every feature set")
     parser.add_argument("--prithvi-dir", type=Path, default=None, help="Folder with prithvi_tokens_ne_YEAR_lead24* (adds Prithvi blocks)")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -223,8 +229,17 @@ def main() -> None:
     ti = targets.get_indexer(df["timestamp"].dt.round("3h"))
     zi = df["zone"].map({z: k for k, z in enumerate(zn)}).to_numpy()
     y_all, zones = df["demand_MW"].to_numpy(), df["zone"].to_numpy()
+    lags = None
+    if args.load_lags:
+        series = df.set_index(["zone", "timestamp"])["demand_MW"]
+        series = series[~series.index.duplicated()]
+        lags = pd.DataFrame({f"demand_lag{h}h": series.reindex(pd.MultiIndex.from_arrays([df["zone"], df["timestamp"] - pd.Timedelta(hours=h)])).to_numpy()
+                             for h in (24, 168)}, index=df.index)
+        print(f"Load lags: {int(lags.isna().any(axis=1).sum())} rows without both lags (the first week)")
     # Score every feature set on the same hours: those where every block has a value.
     has_gfs = ti >= 0
+    if lags is not None:
+        has_gfs &= lags.notna().all(axis=1).to_numpy()
     for b in blocks.values():
         has_gfs &= ~np.isnan(b[np.clip(ti, 0, None), zi, 0])
     combos = [[], ["weather (target)"], ["weather (issue)"], ["GFS point"], ["GFS area"],
@@ -232,6 +247,10 @@ def main() -> None:
     if args.prithvi_dir:
         combos += [["true area"], ["weather (issue)", "true area"], ["Prithvi point"], ["Prithvi area"],
                    ["weather (issue)", "Prithvi area"], ["weather (issue)", "GFS area", "Prithvi area"]]
+    if lags is not None:
+        combos = [[], ["weather (issue)"], ["weather (issue)", "GFS area"]]
+        if args.prithvi_dir:
+            combos += [["weather (issue)", "Prithvi area"], ["weather (issue)", "GFS area", "Prithvi area"], ["weather (issue)", "true area"]]
 
     results = []
     year = df["timestamp_local"].dt.year.to_numpy()
@@ -259,6 +278,8 @@ def main() -> None:
             print(f"\n[{scheme}, {label}] train {tr.sum()} rows, test {te.sum()} rows", flush=True)
             for combo in combos:
                 X = df[dm.CALENDAR_FEATURES].copy()
+                if lags is not None:
+                    X = pd.concat([X, lags], axis=1)
                 for b in combo:
                     tag = b.replace(" ", "_").replace("(", "").replace(")", "")
                     X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None), zi], columns=[f"{tag}_{n}" for n in NAMES], index=df.index)], axis=1)
@@ -267,11 +288,11 @@ def main() -> None:
                 model.fit(Pool(X[tr], y_all[tr], cat_features=dm.CAT_FEATURES))
                 pred = model.predict(X[te])
                 byz = pd.Series(np.abs(pred - y_all[te]) / y_all[te] * 100).groupby(zones[te]).mean()
-                name = "calendar" + "".join(f" + {b}" for b in combo)
+                name = "calendar" + (" + load lags" if lags is not None else "") + "".join(f" + {b}" for b in combo)
                 results.append({"split": scheme, "group": label, "feature_set": name, "mean_zone_mape_pct": byz.mean(),
                                 **{f"mape_{z}": byz.get(z, np.nan) for z in zn}})
                 print(f"  {name:62s} MAPE {byz.mean():5.2f}%   VT {byz.get('VT', np.nan):5.1f}%", flush=True)
-                pd.DataFrame(results).to_csv(args.out_dir / "demand_gfs_comparison.csv", index=False)
+                pd.DataFrame(results).to_csv(args.out_dir / ("demand_with_load_lags.csv" if lags is not None else "demand_gfs_comparison.csv"), index=False)
     print(f"\nWrote {args.out_dir}")
 
 
