@@ -112,9 +112,12 @@ def main() -> None:
         s = df.set_index("timestamp")["heat_rate" if target == "heat_rate" else "lmp_total"]
         day_mean = s.rolling("24h").mean()
         for k, d in LAGS.items():
-            df[f"{target}_{k}"] = s.reindex(df["timestamp"] - d).to_numpy()
-        df[f"{target}_mean24h_to_lag24h"] = day_mean.reindex(df["timestamp"] - pd.Timedelta(hours=24)).to_numpy()
-    lag_cols = {t: [c for c in df.columns if c.startswith(f"{t}_")] for t in args.targets}
+            df[f"past_{target}_{k}"] = s.reindex(df["timestamp"] - d).to_numpy()
+        df[f"past_{target}_mean24h_to_lag24h"] = day_mean.reindex(df["timestamp"] - pd.Timedelta(hours=24)).to_numpy()
+    # Explicit "past_" prefix: selecting by the target's own name once picked up lmp_total itself.
+    lag_cols = {t: [c for c in df.columns if c.startswith(f"past_{t}_")] for t in args.targets}
+    for t, cols in lag_cols.items():
+        assert len(cols) == 4 and not {"lmp_total", "heat_rate", "gas"} & set(cols), cols
 
     # Same hours for everything: every block, lag and the gas normaliser present.
     ok = ti >= 0
