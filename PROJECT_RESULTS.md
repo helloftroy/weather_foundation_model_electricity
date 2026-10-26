@@ -1328,6 +1328,62 @@ hours as above. The first week of 2021 drops out of training (no lags).
   0.05-0.09 points) and Prithvi is about 0.2 points behind GFS. Both
   together equal the ceiling.
 
+# Price, 2021-2024: heat rate and the gas-free test (2026-10-26)
+
+Day-ahead hub price, 24 h ahead, year-ahead folds (test 2023 trained on
+2021-22; test 2024 trained on 2021-23). Script: `local/price_benchmark.py`;
+outputs in `results/price_benchmark_2021_2024/`.
+- **Features:** every set has calendar + past values of its target (24 h,
+  48 h and 7 days before, and the previous day's mean). Weather blocks are
+  zone values weighted by each zone's share of demand. Tokens are the
+  New England box mean, 50 principal components fitted on training times.
+  No load lags.
+- **Scoring:** MAE in $/MWh and R² on the price, same hours for every set.
+  One seed.
+
+**A. Implied heat rate.** The model predicts LMP / that day's Algonquin
+price; the price is the prediction x that day's Algonquin. Gas is a
+normaliser only, never a feature. Median heat rate 11.3 MMBtu/MWh. Caveat:
+our daily Algonquin is interpolated between weekly EIA quotes, so it is a
+normaliser, not something known in advance.
+
+**B. No gas at all (the scientific test).** The model predicts LMP from past
+LMP and weather only. (A first run leaked the target through a column-name
+match, giving R² 1.00; fixed, and a check now stops the script if it
+recurs.)
+
+| Features (+ calendar + past values) | A 2023: MAE | R² | A 2024: MAE | R² | B 2023: MAE | R² | B 2024: MAE | R² |
+|---|---|---|---|---|---|---|---|---|
+| Nothing else | $11.93 | 0.28 | $9.21 | 0.65 | $14.27 | 0.12 | $10.59 | 0.59 |
+| + weather 24 h old | $10.98 | 0.44 | $8.87 | 0.66 | $13.10 | 0.26 | $9.92 | 0.65 |
+| + old weather + GFS area | $9.47 | 0.58 | $7.37 | 0.74 | $9.62 | 0.62 | $7.55 | 0.79 |
+| + old weather + Prithvi decoder | $9.36 | 0.59 | $7.44 | 0.74 | $9.61 | 0.62 | $7.72 | 0.79 |
+| + old weather + GFS + Prithvi decoder | **$9.21** | **0.61** | **$7.29** | **0.75** | $9.24 | 0.65 | $7.58 | 0.80 |
+| + old weather + Prithvi tokens | $9.79 | 0.54 | $8.17 | 0.69 | $9.36 | 0.61 | $7.69 | 0.78 |
+| + old weather + GFS + Prithvi tokens | $9.30 | 0.59 | $7.58 | 0.71 | **$8.42** | **0.70** | **$6.90** | **0.82** |
+| + old weather + actual area weather at T (ceiling) | $9.37 | 0.59 | $7.40 | 0.75 | $9.76 | 0.64 | $8.44 | 0.76 |
+
+- **A weather forecast matters for price** in both versions. It cuts error
+  by 15-17% in A and 24-27% in B, relative to stale weather.
+- **GFS and the Prithvi decoder are level** in both versions (within
+  about $0.15).
+- **The tokens behave differently from the decoder:**
+  - In A (gas level removed), they add nothing, or slightly hurt.
+  - In B (no gas information), GFS + tokens is clearly best in both years:
+    $8.42 against $9.62 for GFS alone, and $6.90 against $7.55. That is
+    9-12% lower error, and beats the local perfect-knowledge ceiling.
+  - So the tokens carry something about price beyond local weather, and
+    that something largely disappears once the gas level is divided out.
+    That fits the hypothesis that they anticipate weather-driven gas
+    conditions (for example wider cold spells, which push up gas demand
+    and prices) before past prices show them.
+- **Not yet shown:**
+  - Whether the token gain is concentrated on gas-spike days.
+  - Whether it is just a proxy for season or gas regime. A test with
+    calendar-by-season interactions, or with gas included, would help.
+  - One seed; the gains are larger than seed noise seen before, but are not
+    tested here.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years
