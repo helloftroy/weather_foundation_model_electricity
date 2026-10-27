@@ -1624,6 +1624,95 @@ highest system demand. MAPE (%), mean over zones. Script:
 - Cheap next step suggested by this: a bridge-day / holiday-adjacent
   feature (day after Thanksgiving, July 3, December 24/26).
 
+## Demand against ISO-NE's own forecast (2026-10-27)
+
+**Data.** ISO-NE Three-Day Reliability Region Demand Forecast, every
+published version, 2021-2024 (Web Services `/reliabilityregionloadforecast/
+day/{day}/all`), plus the system-wide hourly forecast (`/hourlyloadforecast/
+all/day/{day}`). Downloaded on the cluster (`src/isone/
+download_isone_rr_forecast.py`), packed to one parquet per series
+(`src/isone/pack_isone_forecast.py`): `data/isone_forecast/
+isone_reliability_region_forecast.parquet`, `isone_system_forecast.parquet`.
+
+**Which version.** Versions are issued around 03:00-04:00 and 09:00-09:30
+Eastern each day for the next days, plus in-day updates. "Prior-day" =
+the latest version issued on the day before the target's local day and
+before 10:00 Eastern (the day-ahead market deadline); median issue time
+09:20. Its lead is 15-38 h, against our fixed 24 h. Available for 99.5% of
+rows.
+
+**Mapping checks (all passed).**
+- The eight regions are named with ISO-NE's load-zone names (.Z.MAINE,
+  .Z.NEWHAMPSHIRE, .Z.VERMONT, .Z.CONNECTICUT, .Z.RHODEISLAND, .Z.SEMASS,
+  .Z.WCMASS, .Z.NEMASSBOST) and map one-to-one onto our zones.
+- The eight regions sum exactly to the system forecast (ratio 1.0000 for
+  1-99% of hours); the percentages sum to 100.
+- Each region's median forecast/actual ratio is 0.98-1.01 against its own
+  zone, while zone sizes differ by up to 5.6x.
+
+**Definition difference (not error).** ISO-NE's forecast is below our
+actual demand at midday and slightly above at night. System-wide midday
+(10:00-14:00) bias: -582 MW (2021), -761 (2022), -956 (2023), -1,082
+(2024); largest in spring (-1,230 MW in May), smallest in winter (-355 in
+January); night (0:00-4:00) +40 to +140 MW. It is the same in ISO-NE's
+last version before each hour, and in every region (midday 2024: -6% to
+-11% of the zone's demand). Interpretation: the forecast leaves out load
+served by distributed solar that our actual demand series includes. This
+is inferred from the pattern, not yet confirmed in ISO-NE documentation.
+Handled by (a) a bias correction: ISO-NE's mean error by zone x month x
+local hour, fitted on the training years only and added back; (b) giving
+the forecast to CatBoost as a feature, which learns the mapping.
+
+**Results.** Pooled zonal demand, year-ahead folds, same rows for all.
+MAPE (%), mean over zones; Δ vs the bias-corrected ISO-NE forecast with
+95% week-block bootstrap interval. Script: `local/gfs_demand_benchmark.py
+--hard-days --isone-forecast ...`; outputs `results/demand_vs_isone/`.
+
+| Forecast | MAPE 2023 / 2024 | Δ 2023 | Δ 2024 | cold snaps 2023 / 2024 | heat waves 2023 / 2024 | top 5% 2023 / 2024 |
+|---|---|---|---|---|---|---|
+| ISO-NE as published | 4.70 / 4.83 | +0.76 | +0.89 | 4.16 / 3.57 | 4.75 / 4.49 | 5.40 / 5.05 |
+| **ISO-NE bias-corrected (reference)** | 3.93 / 3.94 | | | 3.95 / 3.21 | 4.05 / 3.98 | 4.89 / 4.43 |
+| ours: old weather + GFS | 4.56 / 4.74 | +0.62 [+0.37, +0.87] | +0.81 [+0.62, +0.99] | 6.20 / 4.57 | 5.12 / 5.03 | 5.92 / 5.26 |
+| ours: + GFS + decoder (best of ours) | 4.44 / 4.64 | +0.51 [+0.27, +0.75] | +0.70 [+0.52, +0.89] | 5.76 / 4.69 | 4.98 / 5.04 | 5.69 / 5.29 |
+| calendar + ISO-NE as a feature | 3.97 / 3.81 | +0.04 | -0.13 | 4.29 / 3.72 | 4.59 / 4.45 | 5.21 / 4.82 |
+| + old weather | 3.82 / 3.62 | -0.11 | -0.32 | 4.10 / 3.19 | 4.40 / 4.13 | 5.38 / 4.68 |
+| **+ old weather + GFS** | **3.61 / 3.37** | **-0.32 [-0.41, -0.24]** | **-0.57 [-0.66, -0.47]** | 3.81 / 2.85 | 4.03 / 3.83 | 4.87 / 4.27 |
+| + old weather + decoder (no GFS) | 3.66 / 3.41 | -0.27 | -0.53 | 3.74 / 2.86 | 4.28 / 3.88 | 5.14 / 4.45 |
+| + old weather + tokens (no GFS) | 3.77 / 3.56 | -0.16 | -0.38 | 3.61 / 2.88 | 4.16 / 4.08 | 5.06 / 4.56 |
+| + GFS + decoder | 3.61 / 3.37 | -0.32 | -0.57 | 3.71 / 2.87 | 4.01 / 3.77 | 4.90 / 4.17 |
+| + GFS + tokens | 3.66 / 3.42 | -0.28 | -0.52 | 3.76 / 2.88 | 4.16 / 3.87 | 4.85 / 4.30 |
+| + GFS + decoder + tokens | 3.68 / 3.40 | -0.25 | -0.53 | 3.82 / 2.86 | 4.20 / 3.81 | 4.88 / 4.31 |
+| + actual area weather (ceiling) | 3.65 / 3.37 | -0.28 | -0.57 | 3.80 / 2.84 | 4.14 / 3.68 | 4.97 / 4.24 |
+
+On top of "ISO-NE + old weather + GFS", paired: + decoder -0.002
+[-0.026, +0.024] (2023), -0.007 [-0.030, +0.015] (2024); + tokens +0.045
+[-0.002, +0.092], +0.045 [+0.000, +0.092]. Decoder instead of GFS: +0.049
+[+0.024, +0.075], +0.036 [+0.004, +0.074].
+
+System-wide (sum of zones) MAPE: ISO-NE published 3.48 / 3.91,
+bias-corrected 2.44 / 2.60, ours (GFS + decoder) 3.01 / 2.97, ISO-NE + old
+weather + GFS 1.93 / 1.83.
+
+- ISO-NE's forecast, once corrected for the definition difference, beats
+  our best model by 0.5-0.7 points zonally (0.4-0.6 system-wide). As
+  published, it is worse than ours, because of the solar-shaped gap.
+- Combining is clearly best: ISO-NE's forecast as a feature plus our
+  weather cuts error by 0.3-0.6 points (8-14%) below the corrected ISO-NE
+  forecast, and system-wide from 2.44 / 2.60% to 1.93 / 1.83%. Most of
+  that comes from the GFS forecast; the old (issue-time) weather alone
+  gives about a third of it.
+- Prithvi adds nothing once ISO-NE and GFS are in: decoder +0.00, tokens
+  +0.05 (slightly worse). As a substitute for GFS, the decoder is slightly
+  but significantly worse (+0.04-0.05). On top of ISO-NE + GFS, actual
+  weather does no better than GFS: the weather information is saturated.
+- Hard days: with ISO-NE + GFS, cold-snap MAPE is 3.8 / 2.9%, and the
+  gain over corrected ISO-NE on cold snaps is significant in both years
+  (-0.14, -0.37); heat waves and the top 5% of hours are not reliably
+  improved.
+- Caveats: one seed; ISO-NE's forecast has a 15-38 h lead (ours 24 h);
+  the bias correction is a simple hour x month x zone mean, and CatBoost
+  with the forecast as a feature is a richer correction.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years

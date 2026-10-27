@@ -161,6 +161,27 @@ def merra_features(weather, at, zn):
                      for z in zn], axis=1).astype(np.float32)
 
 
+ISONE_REGIONS = {".Z.MAINE": "ME", ".Z.NEWHAMPSHIRE": "NH", ".Z.VERMONT": "VT", ".Z.CONNECTICUT": "CT", ".Z.RHODEISLAND": "RI",
+                 ".Z.SEMASS": "SEMA", ".Z.WCMASS": "WCMA", ".Z.NEMASSBOST": "NEMA"}
+
+
+def isone_prior_day(path, df):
+    """ISO-NE's reliability-region forecast for each row (zone, UTC hour): the latest version issued on the day
+    before the target's local day and before 10:00 Eastern (the day-ahead market deadline; in practice the
+    ~09:20 version). Regions map one-to-one onto load zones by name (checked: the regions sum exactly to the
+    system forecast, and each region's forecast/actual ratio is 0.98-1.01)."""
+    f = pd.read_parquet(path)
+    et = "America/New_York"
+    created = f["creation_utc"].dt.tz_convert(et)
+    day = f["target_utc"].dt.tz_convert(et).dt.normalize()
+    f = f[(created.dt.normalize() == day - pd.Timedelta(days=1)) & (created.dt.hour < 10)]
+    f = f.sort_values("creation_utc").groupby(["target_utc", "ReliabilityRegion"])["LoadMw"].last().reset_index()
+    f["zone"] = f["ReliabilityRegion"].map(ISONE_REGIONS)
+    assert f["zone"].notna().all(), f.loc[f["zone"].isna(), "ReliabilityRegion"].unique()
+    f["timestamp"] = f["target_utc"].dt.tz_convert("UTC").dt.tz_localize(None).astype(df["timestamp"].dtype)
+    return df[["zone", "timestamp"]].merge(f[["zone", "timestamp", "LoadMw"]], how="left", on=["zone", "timestamp"])["LoadMw"].to_numpy()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--years", type=int, nargs="+", required=True)
@@ -176,6 +197,10 @@ def main() -> None:
                         help="Year-ahead evaluation with Prithvi tokens (each zone's 3 x 3 patch window, 50 PCs fitted on training "
                              "times), weather-defined hard days, top-5%% system-demand hours and week-block bootstrap "
                              "against '+ weather (issue) + GFS area'; saves predictions and daily errors")
+    parser.add_argument("--isone-forecast", type=Path, default=None,
+                        help="isone_reliability_region_forecast.parquet (with --hard-days): adds ISO-NE's own prior-day zonal "
+                             "forecast as a competitor (as published, and bias-corrected by zone x month x hour on training years) "
+                             "and as a feature, and makes the bias-corrected forecast the bootstrap reference")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     zn = list(ZONES)
@@ -255,8 +280,13 @@ def main() -> None:
         lags = pd.DataFrame({f"demand_lag{h}h": series.reindex(pd.MultiIndex.from_arrays([df["zone"], df["timestamp"] - pd.Timedelta(hours=h)])).to_numpy()
                              for h in (24, 168)}, index=df.index)
         print(f"Load lags: {int(lags.isna().any(axis=1).sum())} rows without both lags (the first week)")
+    if args.isone_forecast:
+        df["isone_fc"] = isone_prior_day(args.isone_forecast, df)
+        print(f"ISO-NE prior-day forecast for {df['isone_fc'].notna().mean():.1%} of rows", flush=True)
     # Score every feature set on the same hours: those where every block has a value.
     has_gfs = ti >= 0
+    if args.isone_forecast:
+        has_gfs &= df["isone_fc"].notna().to_numpy()
     if lags is not None:
         has_gfs &= lags.notna().all(axis=1).to_numpy()
     for b in blocks.values():
@@ -278,6 +308,11 @@ def main() -> None:
         iso = df["timestamp_local"].dt.isocalendar()
         week = (iso.year.astype(str) + "-" + iso.week.astype(str)).to_numpy()
         all_preds = []
+        if args.isone_forecast:
+            I = "ISO-NE forecast"
+            combos = [[wi, "GFS area"], [wi, "GFS area", "Prithvi area"], [wi, "GFS area", "Prithvi area", "Prithvi tokens"],
+                      [I], [I, wi], [I, wi, "GFS area"], [I, wi, "Prithvi area"], [I, wi, "Prithvi tokens"], [I, wi, "GFS area", "Prithvi area"],
+                      [I, wi, "GFS area", "Prithvi tokens"], [I, wi, "GFS area", "Prithvi area", "Prithvi tokens"], [I, wi, "true area"]]
     if lags is not None:
         combos = [[], ["weather (issue)"], ["weather (issue)", "GFS area"]]
         if args.prithvi_dir:
@@ -317,11 +352,29 @@ def main() -> None:
                 top = te & (system_demand >= np.quantile(system_demand[te], 0.95))
                 print(f"  hard days: thresholds {hard.attrs['thresholds_K']}; {hard.loc[te, 'cold_snap'].sum() // len(zn)} cold-snap and "
                       f"{hard.loc[te, 'heat_wave'].sum() // len(zn)} heat-wave test hours", flush=True)
+                common = {"row": np.where(te)[0], "test_year": test_year, "zone": zones[te], "actual": y_all[te], "week": week[te], "top": top[te],
+                          "day": df["timestamp_local"].dt.normalize().to_numpy()[te], "is_holiday": df["is_holiday"].to_numpy()[te],
+                          "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}
+                if args.isone_forecast:
+                    # ISO-NE's forecast as published, and with its mean error by zone x month x local hour
+                    # (fitted on the training years only) added back
+                    key = [df["zone"], df["timestamp_local"].dt.month, df["timestamp_local"].dt.hour]
+                    resid = (df["demand_MW"] - df["isone_fc"])[tr].groupby([k[tr] for k in key]).mean()
+                    corrected = df["isone_fc"].to_numpy() + resid.reindex(pd.MultiIndex.from_arrays(key)).fillna(0).to_numpy()
+                    for nm, v in [("ISO-NE forecast (published)", df["isone_fc"].to_numpy()), ("ISO-NE forecast (bias-corrected)", corrected)]:
+                        all_preds.append(pd.DataFrame({**common, "feature_set": nm, "pred": v[te]}))
+                        byz = pd.Series(np.abs(v[te] - y_all[te]) / y_all[te] * 100).groupby(zones[te]).mean()
+                        results.append({"split": scheme, "group": label, "feature_set": nm, "mean_zone_mape_pct": byz.mean(),
+                                        **{f"mape_{z}": byz.get(z, np.nan) for z in zn}})
+                        print(f"  {nm:62s} MAPE {byz.mean():5.2f}%   VT {byz.get('VT', np.nan):5.1f}%", flush=True)
             for combo in combos:
                 X = df[dm.CALENDAR_FEATURES].copy()
                 if lags is not None:
                     X = pd.concat([X, lags], axis=1)
                 for b in combo:
+                    if b == "ISO-NE forecast":
+                        X["isone_forecast_MW"] = df["isone_fc"]
+                        continue
                     tag = b.replace(" ", "_").replace("(", "").replace(")", "")
                     cols = [f"{tag}_{n}" for n in (range(50) if b == "Prithvi tokens" else NAMES)]
                     X = pd.concat([X, pd.DataFrame(fold_blocks[b][np.clip(ti, 0, None), zi], columns=cols, index=df.index)], axis=1)
@@ -335,16 +388,13 @@ def main() -> None:
                                 **{f"mape_{z}": byz.get(z, np.nan) for z in zn}})
                 print(f"  {name:62s} MAPE {byz.mean():5.2f}%   VT {byz.get('VT', np.nan):5.1f}%", flush=True)
                 if args.hard_days:
-                    all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "zone": zones[te], "feature_set": name,
-                                                   "actual": y_all[te], "pred": pred, "week": week[te], "top": top[te],
-                                                   "day": df["timestamp_local"].dt.normalize().to_numpy()[te],
-                                                   "is_holiday": df["is_holiday"].to_numpy()[te],
-                                                   "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                    all_preds.append(pd.DataFrame({**common, "feature_set": name, "pred": pred}))
                 pd.DataFrame(results).to_csv(args.out_dir / ("demand_with_load_lags.csv" if lags is not None else "demand_gfs_comparison.csv"), index=False)
     if args.hard_days:
         preds = pd.concat(all_preds, ignore_index=True)
         preds.to_parquet(args.out_dir / "demand_predictions.parquet", index=False)
-        summary = summarize(preds, "calendar + weather (issue) + GFS area", pct=True)
+        ref = "ISO-NE forecast (bias-corrected)" if args.isone_forecast else "calendar + weather (issue) + GFS area"
+        summary = summarize(preds, ref, pct=True)
         summary.to_csv(args.out_dir / "demand_summary.csv", index=False)
         preds["ape"] = (preds["pred"] - preds["actual"]).abs() / preds["actual"] * 100
         daily = preds.groupby(["test_year", "day", "feature_set"]).agg(mape=("ape", "mean"), cold_snap=("cold_snap", "max"),
@@ -353,7 +403,7 @@ def main() -> None:
         pd.set_option("display.width", 250)
         for ty, g in summary.groupby("test_year"):
             print(f"\n== demand, test {ty}: MAPE (%) overall / cold snaps / heat waves / top 5% system-demand hours; "
-                  f"difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)")
+                  f"difference vs '{ref}' with 95% week-bootstrap interval (negative = better than the reference)")
             show = g[["feature_set", "MAE", "MAE_cold_snap", "MAE_heat_wave", "MAE_top5pct", "dMAE_vs_ref_all", "dMAE_vs_ref_all_ci",
                       "dMAE_vs_ref_cold_snap", "dMAE_vs_ref_cold_snap_ci", "dMAE_vs_ref_heat_wave", "dMAE_vs_ref_heat_wave_ci"]].copy()
             show["feature_set"] = show["feature_set"].str.replace("calendar", "", regex=False).str.strip(" +").replace("", "(calendar)")
