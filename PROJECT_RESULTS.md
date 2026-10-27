@@ -1525,6 +1525,45 @@ Caveats: one seed; 50 extra features versus 6; the MERRA-2 analysis at
 issue time is a reanalysis, not an operational analysis (see the GEOS-FP
 note above).
 
+## Price: token readout, PCA or not, pooled or spatial (2026-10-26)
+
+Same setting as the known-gas section (raw LMP, Henry Hub known as a
+feature, year-ahead folds, one seed). Four token readouts, each with old
+weather, alone and on top of GFS. Script: `local/price_benchmark.py
+--targets lmp --gas-features henryhub --token-variants`; outputs
+`results/price_known_gas/token_variants/`.
+
+- pooled full: final-layer tokens averaged over the 8 x 7 box, all 2,560
+  dimensions, no PCA.
+- pooled PCA-50: the readout used so far. 50 standardised principal
+  components fitted on training times; they keep 76% (2023 fold) / 75%
+  (2024 fold) of the variance.
+- spatial k10 / k25: every patch kept (56), each patch's 2,560-d token
+  projected on k components of ONE basis shared by all patches (fitted on
+  training times and patches): 560 or 1,400 features. 10 components keep
+  24% and 25 keep 42% of the per-patch variance; individual patches are
+  much less compressible than the box average.
+
+MAE ($/MWh) and Δ vs "+ old weather + GFS" (8.41 / 7.60) with 95%
+week-bootstrap interval:
+
+| Token readout | + old weather, no GFS: MAE 2023 / 2024 | + GFS: MAE 2023 / 2024 | Δ vs GFS 2023 | Δ vs GFS 2024 |
+|---|---|---|---|---|
+| pooled full (2,560) | 8.50 / 7.53 | 7.80 / 7.18 | -0.60 [-1.29, -0.03] | -0.43 [-0.86, +0.06] |
+| pooled PCA-50 | 8.64 / 7.47 | **7.55 / 6.74** | **-0.86 [-1.33, -0.45]** | **-0.86 [-1.23, -0.52]** |
+| spatial k10 (560) | 8.51 / 7.60 | 7.57 / 7.02 | -0.83 [-1.39, -0.37] | -0.59 [-0.93, -0.25] |
+| spatial k25 (1,400) | 8.66 / 7.57 | 7.68 / 7.13 | -0.72 [-1.31, -0.21] | -0.48 [-0.82, -0.11] |
+
+- Does Prithvi help? Yes, on top of GFS, with every readout; never alone
+  (all "no GFS" rows are within noise of GFS).
+- Does PCA throw away useful information? No sign of it: the full
+  2,560-d block is worse than PCA-50 in both years. With about 17-26
+  thousand training hours, more raw dimensions dilute rather than inform.
+- Does keeping the geography help? No: spatial readouts are between full
+  and PCA-50, and more components per patch is worse (k25 < k10).
+- Caveat: one seed, one CatBoost configuration; the ranking among
+  readouts (differences of $0.0-0.4) is within the intervals' width.
+
 ## Demand: hard days, tokens, and where the best model struggles (2026-10-26)
 
 Pooled zonal demand, 24 h ahead, year-ahead folds as above, no load lags.

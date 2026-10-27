@@ -74,6 +74,41 @@ CALENDAR = [f for f in dm.CALENDAR_FEATURES if f != "zone"]
 LAGS = {"lag24h": pd.Timedelta(hours=24), "lag48h": pd.Timedelta(hours=48), "lag7d": pd.Timedelta(days=7)}
 
 
+def spatial_tokens(token_paths, train_times, ks):
+    """Keep every patch of the 8 x 7 box; reduce each patch's 2,560-d token to k components with ONE basis
+    (standardised PCA over all training (time, patch) vectors), so a component means the same thing everywhere.
+    token_paths: per year in order, (file, pos) with pos[i] = sample index for that year's i-th target time
+    (-1 if none). Returns {k: [all target times, patches * k]}."""
+    n, s, ss, xtx, start = 0, 0.0, 0.0, 0.0, 0
+    for path, pos in token_paths:   # pass 1: training moments, streamed
+        a = np.load(path, mmap_mode="r")
+        use = pos[(pos >= 0) & train_times[start:start + len(pos)]]
+        for i in range(0, len(use), 128):
+            x = np.asarray(a[np.sort(use[i:i + 128])], np.float64).reshape(-1, a.shape[-1])
+            n += len(x); s = s + x.sum(0); ss = ss + (x ** 2).sum(0); xtx = xtx + x.T @ x
+        start += len(pos)
+    mu = s / n
+    sd = np.sqrt(np.maximum(ss / n - mu ** 2, 1e-12))
+    corr = (xtx / n - np.outer(mu, mu)) / np.outer(sd, sd)
+    w, v = np.linalg.eigh(corr)
+    v = v[:, ::-1]; w = w[::-1]
+    out = {}
+    for k in ks:
+        print(f"  spatial tokens: {k} shared components keep {w[:k].sum() / w.sum():.1%} of the (standardised) variance per patch", flush=True)
+        proj = (v[:, :k] / sd[:, None]).astype(np.float32)
+        parts = []
+        for path, pos in token_paths:   # pass 2: project every target time
+            a = np.load(path, mmap_mode="r")
+            o = np.full((len(pos), a.shape[1] * a.shape[2] * k), np.nan, np.float32)
+            idx = np.where(pos >= 0)[0]
+            for i in range(0, len(idx), 128):
+                x = np.asarray(a[pos[idx[i:i + 128]]], np.float32)
+                o[idx[i:i + 128]] = ((x - mu.astype(np.float32)) @ proj).reshape(len(x), -1)
+            parts.append(o)
+        out[k] = np.concatenate(parts)
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--years", type=int, nargs="+", default=[2021, 2022, 2023, 2024])
@@ -90,6 +125,10 @@ def main() -> None:
     parser.add_argument("--input-control", action="store_true",
                         help="Add a control block: Prithvi's own MERRA-2 input fields at issue time (all 160 channels, "
                              "averaged over the box, 50 PCs fitted on training times), built exactly like the tokens")
+    parser.add_argument("--token-variants", action="store_true",
+                        help="Compare token readouts: pooled box mean with all 2,560 dimensions (no PCA), pooled PCA-50, "
+                             "and spatial tokens (all 8 x 7 patches kept, the 2,560 axis reduced to k = 10 or 25 components "
+                             "with one basis shared by all patches, fitted on training times)")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
@@ -130,6 +169,7 @@ def main() -> None:
         tok_t = np.full((len(t), tok.shape[1]), np.nan, np.float32)
         tok_t[pos >= 0] = tok[pos[pos >= 0]]
         year_blocks["Prithvi tokens (raw)"] = tok_t
+        token_paths.append((args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.npy", pos))
         if args.input_control:
             inp = box_pixels(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24_inputs.npy")
             inp_t = np.full((len(t), inp.shape[1]), np.nan, np.float32)
@@ -194,6 +234,9 @@ def main() -> None:
               ["weather (issue)", "GFS area", "Prithvi area"], ["weather (issue)", "Prithvi tokens"],
               ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "Prithvi area", "Prithvi tokens"],
               ["weather (issue)", "Prithvi area", "Prithvi tokens"], ["weather (issue)", "true area"]]
+    if args.token_variants:
+        variants = ["tokens pooled full", "Prithvi tokens", "tokens spatial k10", "tokens spatial k25"]
+        combos = [[], ["weather (issue)", "GFS area"]] + [["weather (issue)", v] for v in variants] + [["weather (issue)", "GFS area", v] for v in variants]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -209,7 +252,12 @@ def main() -> None:
         train_times = np.zeros(len(targets), bool)
         train_times[np.unique(ti[tr])] = True
         blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
-        blocks["Prithvi tokens"] = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)[0]
+        blocks["Prithvi tokens"], frac = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)
+        print(f"  pooled tokens: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
+        if args.token_variants:
+            blocks["tokens pooled full"] = sys_blocks["Prithvi tokens (raw)"]
+            for k, v in spatial_tokens(token_paths, train_times, (10, 25)).items():
+                blocks[f"tokens spatial k{k}"] = v
         if args.input_control:
             blocks["MERRA-2 fields"] = pca(sys_blocks["MERRA-2 fields (raw)"], train_times, 50)[0]
         hard = hard_day_labels(df["timestamp_local"], t2m_true, tr)
@@ -222,7 +270,7 @@ def main() -> None:
             for combo in combos:
                 X = df[CALENDAR + lag_cols[target] + gas_cols].copy()
                 for b in combo:
-                    names = [f"{b}_{n}" for n in (NAMES if b not in ("Prithvi tokens", "MERRA-2 fields") else range(50))]
+                    names = [f"{b}_{n}" for n in (NAMES if blocks[b].shape[1] == len(NAMES) else range(blocks[b].shape[1]))]
                     X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
                                           thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
