@@ -68,6 +68,7 @@ from catboost import CatBoostRegressor, Pool
 import train_catboost_comparisons as dm
 from eval_tools import hard_day_labels, summarize
 from analyze_global_year import ZONES, box_pixels, box_tokens, pca
+from regional_weather import gfs_regional, prithvi_regional
 from gfs_demand_benchmark import NAMES, gfs_for_targets, merra_features, prithvi_features, zone_features
 
 CALENDAR = [f for f in dm.CALENDAR_FEATURES if f != "zone"]
@@ -129,6 +130,9 @@ def main() -> None:
                         help="Compare token readouts: pooled box mean with all 2,560 dimensions (no PCA), pooled PCA-50, "
                              "and spatial tokens (all 8 x 7 patches kept, the 2,560 axis reduced to k = 10 or 25 components "
                              "with one basis shared by all patches, fitted on training times)")
+    parser.add_argument("--regional", action="store_true",
+                        help="Add regional weather outside New England (regional_weather.py: five areas x 6 variables, "
+                             "from GFS, the Prithvi decoder and actual MERRA-2) and compare with and without it")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
@@ -169,6 +173,9 @@ def main() -> None:
         tok_t = np.full((len(t), tok.shape[1]), np.nan, np.float32)
         tok_t[pos >= 0] = tok[pos[pos >= 0]]
         year_blocks["Prithvi tokens (raw)"] = tok_t
+        if args.regional:
+            year_blocks["GFS regional"] = gfs_regional(args.data_dir / "gfs" / f"gfs_wide_{y}.nc", t)
+            year_blocks.update(prithvi_regional(args.prithvi_dir, y, t, weather))
         token_paths.append((args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.npy", pos))
         if args.input_control:
             inp = box_pixels(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24_inputs.npy")
@@ -237,6 +244,10 @@ def main() -> None:
     if args.token_variants:
         variants = ["tokens pooled full", "Prithvi tokens", "tokens spatial k10", "tokens spatial k25"]
         combos = [[], ["weather (issue)", "GFS area"]] + [["weather (issue)", v] for v in variants] + [["weather (issue)", "GFS area", v] for v in variants]
+    if args.regional:
+        wi, G, D, T = "weather (issue)", "GFS area", "Prithvi area", "Prithvi tokens"
+        combos = [[wi, G], [wi, G, "GFS regional"], [wi, D], [wi, D, "Prithvi regional"], [wi, G, D], [wi, G, D, "GFS regional", "Prithvi regional"],
+                  [wi, G, T], [wi, G, "GFS regional", T], [wi, "true area"], [wi, "true area", "true regional"]]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],

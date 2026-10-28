@@ -1713,6 +1713,94 @@ weather + GFS 1.93 / 1.83.
   the bias correction is a simple hour x month x zone mean, and CatBoost
   with the forecast as a feature is a richer correction.
 
+## Regional weather beyond New England (2026-10-28)
+
+**Data.** Wide box 32-50 N, 90-64 W. GFS 24-27 h forecasts
+(`data/gfs/gfs_wide_YEAR.nc`, 0.25 deg); Prithvi decoder 24 h forecast and
+the true MERRA-2 fields over the same box (`prithvi_tokens_ne_YEAR_lead24_
+wide_recon5.npy` / `_wide_inputs5.npy`, 0.5 x 0.625 deg, 5 variables,
+normalised; converted with the same per-variable scale as the New England
+fields). The regular token, input and decoder files from that run are
+byte-identical to the earlier ones.
+
+**Features** (`local/regional_weather.py`). Five coarse areas outside New
+England, plain area means (land and sea): NY-PA (40-45 N, 80-75 W),
+MidAtlantic (36-40 N, 80-74 W), GreatLakes (38-46 N, 90-80 W), Southeast
+(32-36 N, 90-75 W), Quebec-Maritimes (45-50 N, 80-64 W). Six variables each
+(T2M, QV2M, U10M, V10M, SWGNT, wind speed): 30 features per block, the same
+definitions for "GFS regional", "Prithvi regional" (decoder) and "true
+regional" (MERRA-2 at T, the ceiling). For demand, the same regional
+values go to every zone.
+
+24 h 2 m temperature RMSE against MERRA-2 over the areas (2023): Prithvi
+0.61-0.83 K, GFS 0.98-1.46 K (MERRA-2 is Prithvi's own initial data, so
+this favours Prithvi, as before).
+
+### Price (raw LMP, Henry Hub known as a feature)
+
+MAE $/MWh; Δ vs "+ old weather + GFS" (8.41 / 7.60), 95% week bootstrap.
+Script: `local/price_benchmark.py --targets lmp --gas-features henryhub
+--regional`; outputs `results/regional/price/`.
+
+| + old weather + ... | MAE 2023 / 2024 | Δ 2023 | Δ 2024 | cold snaps 2023 / 2024 | top 5% 2023 / 2024 |
+|---|---|---|---|---|---|
+| GFS (reference) | 8.41 / 7.60 | | | 83.2 / 18.7 | 41.8 / 33.9 |
+| GFS + GFS regional | 7.42 / 7.58 | **-0.99 [-1.48, -0.58]** | -0.02 [-0.42, +0.41] | 77.6 / 18.3 | 39.3 / 32.7 |
+| decoder alone | 8.59 / 7.84 | +0.18 | +0.23 | 83.5 / 20.4 | 42.0 / 35.5 |
+| decoder + Prithvi regional | 7.54 / 7.46 | -0.87 [-1.40, -0.40] | -0.15 [-0.54, +0.28] | 70.1 / 19.9 | 36.6 / 32.7 |
+| GFS + decoder | 8.21 / 7.65 | -0.20 | +0.05 | 79.3 / 19.2 | 40.4 / 33.0 |
+| GFS + decoder + both regional | **7.13** / 7.15 | -1.28 [-1.93, -0.72] | -0.45 [-0.82, -0.09] | 71.1 / 17.7 | 37.8 / 31.0 |
+| GFS + tokens | 7.55 / **6.74** | -0.86 [-1.33, -0.45] | **-0.86 [-1.23, -0.52]** | 76.8 / 15.5 | 39.1 / 30.9 |
+| GFS + GFS regional + tokens | **7.13** / 6.78 | -1.27 [-1.87, -0.75] | -0.82 [-1.23, -0.45] | 72.8 / 15.2 | 37.8 / 31.7 |
+| actual area weather | 8.69 / 8.03 | +0.28 | +0.42 | 83.4 / 21.5 | 41.9 / 35.1 |
+| actual area + actual regional | 7.54 / 7.33 | -0.87 | -0.27 | 77.5 / 17.7 | 39.2 / 31.3 |
+
+Paired, against "GFS + GFS regional":
+- + tokens: -0.28 [-0.56, -0.02] (2023), -0.80 [-1.19, -0.45] (2024).
+- decoder + Prithvi regional instead: +0.12 [-0.16, +0.36], -0.13 [-0.40, +0.16].
+- + decoder + Prithvi regional: -0.28 [-0.61, -0.02], -0.43 [-0.63, -0.25].
+- actual area + actual regional instead: +0.12 [-0.04, +0.29], -0.25 [-0.46, -0.05].
+
+- Regional weather matters for price in 2023 (about 12% of MAE), not in
+  2024. 2023 includes the February 3-4 cold outbreak, which reached well
+  beyond New England.
+- Fair comparison: Prithvi's regional forecast is as good as GFS's
+  (differences within noise both years).
+- In 2023 regional weather explains most of the token gain (tokens add
+  -0.28 on top of it, against -0.86 without it). In 2024 it explains none
+  (tokens still add -0.80). So the tokens carry broader-scale weather
+  information, and in 2024 something beyond the surface variables in this
+  box.
+- The best price models now combine GFS with Prithvi (tokens or the
+  regional decoder); both beat GFS + GFS regional significantly.
+
+### Demand
+
+Same feature sets (no tokens); MAPE %, Δ vs "+ old weather + GFS".
+Script: `local/gfs_demand_benchmark.py --hard-days --regional
+--isone-forecast ...`; outputs `results/regional/demand/`.
+
+| | MAPE 2023 / 2024 | Δ 2023 | Δ 2024 |
+|---|---|---|---|
+| old weather + GFS (reference) | 4.56 / 4.74 | | |
+| + GFS regional | 4.64 / 4.84 | +0.09 [-0.02, +0.20] | +0.10 [-0.03, +0.22] |
+| old weather + decoder | 4.68 / 4.94 | +0.12 | +0.19 |
+| + Prithvi regional | 4.74 / 4.88 | +0.18 | +0.13 |
+| GFS + decoder | 4.44 / 4.64 | -0.12 | -0.10 |
+| GFS + decoder + both regional | 4.59 / 4.68 | +0.03 | -0.06 |
+| actual area | 4.48 / 4.76 | -0.07 | +0.02 |
+| actual area + actual regional | 4.69 / 4.73 | +0.13 | -0.02 |
+| ISO-NE + old weather + GFS | 3.61 / 3.37 | | |
+| ISO-NE + old weather + GFS + GFS regional | 3.65 / 3.47 | | |
+| ISO-NE + GFS + decoder + both regional | 3.63 / 3.45 | | |
+
+- Regional weather does not help demand: neither forecast nor actual
+  regional weather improves on the New England zone weather, alone or on
+  top of ISO-NE's forecast (slightly worse, within or near noise). Some
+  cold-snap gains in 2023 (-0.3 to -0.7 points) rest on 4 days.
+- As expected: demand is local; price depends on the wider gas and
+  electricity system.
+
 ## Still to do (2020 onward)
 
 - Run 2021-2024 the same way and repeat with training on earlier years

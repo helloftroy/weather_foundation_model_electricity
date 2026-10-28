@@ -116,26 +116,7 @@ def prithvi_features(data_dir, y, targets, weather, zn):
     rch = [meta["fields"]["recon_sfc"]["channels"].index(v) for v in WEATHER_VARS]
     windows = zone_windows(PATCH_LAT, PATCH_LON)
     cells = {z: (int(np.abs(plat - la).argmin()), int(np.abs(plon - lo).argmin())) for z, (la, lo) in ZONES.items()}
-
-    # Normalised -> physical: fit value = mu + sd * z on the zone cells, where the model's
-    # input pixel and the weather table are the same MERRA-2 cell.
-    w_issue = weather.reindex(issue)
-    scale = []
-    for m, v in enumerate(WEATHER_VARS):
-        xs = np.concatenate([np.asarray(inp[:, ich[m], i, j], np.float64) for i, j in cells.values()])
-        ys = np.concatenate([w_issue[f"{z}_{v}"].to_numpy() for z in cells])
-        ok = ~np.isnan(ys)
-        sd, mu = np.polyfit(xs[ok], ys[ok], 1)
-        r = np.corrcoef(xs[ok], ys[ok])[0, 1]
-        if r < 0.9999:
-            raise SystemExit(f"{y} {v}: model input and weather table do not match (correlation {r:.5f}); check the grids.")
-        scale.append((mu, sd))
-    mu = np.array([a for a, _ in scale], np.float32)
-    sd = np.array([b for _, b in scale], np.float32)
-
-    def physical(a):  # [..., 5] normalised -> physical, plus wind speed
-        a = a * sd + mu
-        return np.concatenate([a, np.hypot(a[..., 2], a[..., 3])[..., None]], axis=-1)
+    physical = prithvi_physical(meta, inp, weather, y)
 
     n_t, n_z = len(targets), len(zn)
     out = {k: np.full((n_t, n_z, len(NAMES)), np.nan, np.float32) for k in ("Prithvi point", "Prithvi area", "true area")}
@@ -153,6 +134,34 @@ def prithvi_features(data_dir, y, targets, weather, zn):
         ok = by_issue >= 0
         out["true area"][ok, k] = physical(inp_c[by_issue[ok], :, pr, pc].mean(axis=(2, 3)))
     return out
+
+
+def prithvi_physical(meta, inp, weather, y):
+    """Function mapping normalised Prithvi values [..., 5 WEATHER_VARS] to physical units plus wind speed [..., 6].
+    The normalisation is one scalar (mu, sd) per variable, fitted where the model's input pixel and the
+    weather table are the same MERRA-2 cell (the zone cells); it must fit exactly."""
+    issue = pd.DatetimeIndex(meta["timestamps"])
+    plat, plon = np.array(meta["pixel_lats"]), np.array(meta["pixel_lons"])
+    ich = [meta["fields"]["inputs"]["channels"].index(v) for v in WEATHER_VARS]
+    cells = {z: (int(np.abs(plat - la).argmin()), int(np.abs(plon - lo).argmin())) for z, (la, lo) in ZONES.items()}
+    w_issue = weather.reindex(issue)
+    scale = []
+    for m, v in enumerate(WEATHER_VARS):
+        xs = np.concatenate([np.asarray(inp[:, ich[m], i, j], np.float64) for i, j in cells.values()])
+        ys = np.concatenate([w_issue[f"{z}_{v}"].to_numpy() for z in cells])
+        ok = ~np.isnan(ys)
+        sd, mu = np.polyfit(xs[ok], ys[ok], 1)
+        r = np.corrcoef(xs[ok], ys[ok])[0, 1]
+        if r < 0.9999:
+            raise SystemExit(f"{y} {v}: model input and weather table do not match (correlation {r:.5f}); check the grids.")
+        scale.append((mu, sd))
+    mu = np.array([a for a, _ in scale], np.float32)
+    sd = np.array([b for _, b in scale], np.float32)
+
+    def physical(a):
+        a = a * sd + mu
+        return np.concatenate([a, np.hypot(a[..., 2], a[..., 3])[..., None]], axis=-1)
+    return physical
 
 
 def merra_features(weather, at, zn):
@@ -201,6 +210,9 @@ def main() -> None:
                         help="isone_reliability_region_forecast.parquet (with --hard-days): adds ISO-NE's own prior-day zonal "
                              "forecast as a competitor (as published, and bias-corrected by zone x month x hour on training years) "
                              "and as a feature, and makes the bias-corrected forecast the bootstrap reference")
+    parser.add_argument("--regional", action="store_true",
+                        help="Add regional weather outside New England (regional_weather.py: five areas x 6 variables, "
+                             "from GFS, the Prithvi decoder and actual MERRA-2) and compare with and without it")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     zn = list(ZONES)
@@ -223,6 +235,10 @@ def main() -> None:
                        "GFS point": point, "GFS area": area}
         if args.prithvi_dir:
             per_year[y].update(prithvi_features(args.prithvi_dir, y, t, weather, zn))
+        if args.regional:   # the same regional features for every zone
+            from regional_weather import gfs_regional, prithvi_regional
+            reg = {"GFS regional": gfs_regional(args.data_dir / "gfs" / f"gfs_wide_{y}.nc", t), **prithvi_regional(args.prithvi_dir, y, t, weather)}
+            per_year[y].update({k: np.repeat(v[:, None, :], len(zn), axis=1) for k, v in reg.items()})
             # the true area at T - 24 h: persistence over the area
             sh = np.full_like(per_year[y]["true area"], np.nan)
             sh[8:] = per_year[y]["true area"][:-8]
@@ -313,6 +329,12 @@ def main() -> None:
             combos = [[wi, "GFS area"], [wi, "GFS area", "Prithvi area"], [wi, "GFS area", "Prithvi area", "Prithvi tokens"],
                       [I], [I, wi], [I, wi, "GFS area"], [I, wi, "Prithvi area"], [I, wi, "Prithvi tokens"], [I, wi, "GFS area", "Prithvi area"],
                       [I, wi, "GFS area", "Prithvi tokens"], [I, wi, "GFS area", "Prithvi area", "Prithvi tokens"], [I, wi, "true area"]]
+    if args.regional:
+        wi, G, D = "weather (issue)", "GFS area", "Prithvi area"
+        combos = [[wi, G], [wi, G, "GFS regional"], [wi, D], [wi, D, "Prithvi regional"], [wi, G, D], [wi, G, D, "GFS regional", "Prithvi regional"],
+                  [wi, "true area"], [wi, "true area", "true regional"]]
+        if args.isone_forecast:
+            combos += [["ISO-NE forecast", wi, G], ["ISO-NE forecast", wi, G, "GFS regional"], ["ISO-NE forecast", wi, G, D, "GFS regional", "Prithvi regional"]]
     if lags is not None:
         combos = [[], ["weather (issue)"], ["weather (issue)", "GFS area"]]
         if args.prithvi_dir:
@@ -376,7 +398,8 @@ def main() -> None:
                         X["isone_forecast_MW"] = df["isone_fc"]
                         continue
                     tag = b.replace(" ", "_").replace("(", "").replace(")", "")
-                    cols = [f"{tag}_{n}" for n in (range(50) if b == "Prithvi tokens" else NAMES)]
+                    width = fold_blocks[b].shape[-1]
+                    cols = [f"{tag}_{n}" for n in (NAMES if width == len(NAMES) else range(width))]
                     X = pd.concat([X, pd.DataFrame(fold_blocks[b][np.clip(ti, 0, None), zi], columns=cols, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False, thread_count=-1,
                                           train_dir=str(args.out_dir / "catboost_info"))
@@ -393,7 +416,7 @@ def main() -> None:
     if args.hard_days:
         preds = pd.concat(all_preds, ignore_index=True)
         preds.to_parquet(args.out_dir / "demand_predictions.parquet", index=False)
-        ref = "ISO-NE forecast (bias-corrected)" if args.isone_forecast else "calendar + weather (issue) + GFS area"
+        ref = "ISO-NE forecast (bias-corrected)" if args.isone_forecast and not args.regional else "calendar + weather (issue) + GFS area"
         summary = summarize(preds, ref, pct=True)
         summary.to_csv(args.out_dir / "demand_summary.csv", index=False)
         preds["ape"] = (preds["pred"] - preds["actual"]).abs() / preds["actual"] * 100
