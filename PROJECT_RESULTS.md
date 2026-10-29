@@ -2118,6 +2118,63 @@ features, past prices and the Henry Hub price.
   widths, so the shape (flat plateau, decline at the extremes) is the
   finding, not the exact best k.
 
+## Price: wrong-time placebo for the tokens (2026-10-29)
+
+Do the tokens carry the day's atmospheric state, or only season / time of
+day? Raw LMP, Henry Hub known, year-ahead folds, same CatBoost settings.
+The real 50-PC token block (PCA fitted on the real training tokens) is
+re-assigned to the wrong target times, in training and test alike, and
+the model retrained:
+- shift +7 d / -7 d: each target time gets the tokens of the same time a
+  week later / earlier (the other direction at the ends of the record);
+- within-month shuffle (3 seeds): a random permutation within each (year,
+  calendar month, 3-hour UTC slot) group; same month and time of day
+  always, median 9 days away, about 3% keep their own tokens by chance.
+Script: `local/price_benchmark.py --targets lmp --gas-features henryhub
+--placebo`; outputs `results/price_known_gas/placebo/` (increments in
+`placebo_increments.csv`).
+
+Δ MAE ($/MWh) vs the baseline, and real minus placebo (negative = the
+real tokens are better), 95% week-block bootstrap:
+
+| Tokens | + GFS 2023 | + GFS + regional 2023 | + GFS 2024 | + GFS + regional 2024 |
+|---|---|---|---|---|
+| real | -0.86 [-1.33, -0.45] | -0.28 [-0.56, -0.02] | -0.86 [-1.23, -0.52] | **-0.80 [-1.19, -0.45]** |
+| shift +7 d | -0.37 [-0.81, +0.06] | +0.04 | -0.26 [-0.65, +0.13] | -0.53 [-0.89, -0.21] |
+| shift -7 d | -0.17 | +0.09 | -0.09 | -0.49 [-0.87, -0.13] |
+| shuffle s0 | -0.18 | +0.01 | -0.16 | -0.32 [-0.54, -0.13] |
+| shuffle s1 | -0.06 | +0.10 | -0.20 | -0.25 [-0.47, -0.06] |
+| shuffle s2 | -0.11 | +0.06 | -0.00 | -0.28 [-0.54, -0.07] |
+
+Real minus placebo:
+
+| Placebo | + GFS 2023 | + GFS + regional 2023 | + GFS 2024 | + GFS + regional 2024 |
+|---|---|---|---|---|
+| shift +7 d | -0.49 [-0.87, -0.15] | -0.33 [-0.57, -0.13] | -0.61 [-1.01, -0.25] | -0.28 [-0.53, -0.05] |
+| shift -7 d | -0.69 [-1.13, -0.30] | -0.37 [-0.59, -0.17] | -0.78 [-1.18, -0.46] | -0.31 [-0.59, -0.05] |
+| shuffle s0 | -0.68 [-1.03, -0.37] | -0.29 [-0.53, -0.04] | -0.71 [-1.01, -0.43] | -0.48 [-0.82, -0.20] |
+| shuffle s1 | -0.80 [-1.20, -0.44] | -0.38 [-0.61, -0.17] | -0.66 [-0.93, -0.41] | -0.55 [-0.81, -0.30] |
+| shuffle s2 | -0.75 [-1.12, -0.40] | -0.35 [-0.56, -0.14] | -0.86 [-1.17, -0.57] | -0.52 [-0.77, -0.28] |
+
+- **The real tokens beat every placebo, significantly, in every setting.**
+  The tokens carry day-specific atmospheric state, not just season or
+  time of day.
+- On top of GFS (both years) and of GFS + regional in 2023, the placebo
+  tokens give essentially nothing (-0.18 to +0.10 for the shuffles): the
+  whole token gain there is day-specific.
+- **On top of GFS + regional in 2024, part of the gain is not
+  day-specific:** the within-month shuffles still give -0.25 to -0.32
+  (significant) and the week shifts -0.5. So of the -0.80, roughly
+  -0.5 is day-specific (real vs shuffle) and about -0.3 is information at
+  the month scale (what the month's tokens have in common: a
+  month-level atmospheric or regime signal, not the calendar, which the
+  model already has). The week shifts keep more (-0.5), consistent with
+  weather regimes persisting for about a week, so "real vs +/-7 d"
+  (-0.28 to -0.31) is a conservative lower bound on the day-specific part.
+- Caveats: one CatBoost seed (three shuffle seeds agree closely); the
+  month-scale part cannot be separated here from other slowly varying
+  state the tokens encode.
+
 ## Decoder check on all variables, and a GFS shortwave problem (2026-10-29)
 
 **Decoder.** 24 h ahead over the zone areas, against MERRA-2 at the target
@@ -2189,7 +2246,11 @@ trained on 2021-23), CatBoost with one seed.
   regional GFS or Prithvi fields, or from the raw MERRA-2 analysis); in
   2024 it is not explained by regional surface weather or by the raw
   analysis. The gain is flat from about 25 to 250 PCs, so it does not
-  depend on the 50-PC choice. Cold-snap days remain poorly predicted by
+  depend on the 50-PC choice. A wrong-time placebo (tokens shuffled
+  within month and time of day, or shifted a week) removes most of the
+  gain: the real tokens beat every placebo significantly, so they carry
+  day-specific state; in 2024 about a third of the gain over GFS +
+  regional survives the shuffle (month-scale signal). Cold-snap days remain poorly predicted by
   everything.
 
 ## Still to do

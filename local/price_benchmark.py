@@ -75,6 +75,28 @@ CALENDAR = [f for f in dm.CALENDAR_FEATURES if f != "zone"]
 LAGS = {"lag24h": pd.Timedelta(hours=24), "lag48h": pd.Timedelta(hours=48), "lag7d": pd.Timedelta(days=7)}
 
 
+def placebo_index(targets, valid, seeds=(0, 1, 2)):
+    """For each target time, the index of the target time whose tokens it gets under each placebo.
+    Shift +/-7 days (falling back to the opposite shift at the ends of the record); shuffle = a random
+    permutation within each (year, month, 3-hour UTC slot) group of times that have tokens."""
+    out = {}
+    plus = targets.get_indexer(targets + pd.Timedelta(days=7))
+    minus = targets.get_indexer(targets - pd.Timedelta(days=7))
+    for name, a, b in [("tokens placebo shift +7d", plus, minus), ("tokens placebo shift -7d", minus, plus)]:
+        src = np.where(a >= 0, a, b)
+        src = np.where((src >= 0) & valid[np.clip(src, 0, None)], src, np.arange(len(targets)))   # rare gaps: keep own (NaN-free) row
+        out[name] = src
+    key = pd.DataFrame({"y": targets.year, "m": targets.month, "h": targets.hour})
+    for seed in seeds:
+        rng = np.random.default_rng(seed)
+        src = np.arange(len(targets))
+        for _, idx in key[valid].groupby(["y", "m", "h"]).indices.items():
+            rows = np.where(valid)[0][idx]
+            src[rows] = rng.permutation(rows)
+        out[f"tokens placebo shuffle s{seed}"] = src
+    return out
+
+
 def spatial_tokens(token_paths, train_times, ks):
     """Keep every patch of the 8 x 7 box; reduce each patch's 2,560-d token to k components with ONE basis
     (standardised PCA over all training (time, patch) vectors), so a component means the same thing everywhere.
@@ -136,7 +158,15 @@ def main() -> None:
     parser.add_argument("--pc-sweep", type=int, nargs="*", default=None,
                         help="Token PCA sweep: pooled tokens with each of these numbers of principal components, plus the full "
                              "2,560 dimensions, each added to GFS and to GFS + GFS regional (e.g. --pc-sweep 10 25 50 100 250 500)")
+    parser.add_argument("--placebo", action="store_true",
+                        help="Wrong-time placebo for the tokens: the same 50-PC token representation (fitted on the real "
+                             "training tokens) re-assigned to the wrong target times, in training and test alike, then the "
+                             "model retrained: shifted +7 / -7 days, and shuffled within the same calendar month and the "
+                             "same 3-hour time of day (3 seeds), which keeps season and time of day but not the day's "
+                             "weather. Compared with the real tokens, on top of GFS and of GFS + GFS regional")
     args = parser.parse_args()
+    if args.placebo:
+        args.regional = True
     if args.pc_sweep is not None:
         args.regional = True
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -257,6 +287,10 @@ def main() -> None:
         wi, G, R = "weather (issue)", "GFS area", "GFS regional"
         sweep = [f"tokens PC{k}" for k in args.pc_sweep] + ["tokens pooled full"]
         combos = [[wi, G], [wi, G, R]] + [[wi, G, v] for v in sweep] + [[wi, G, R, v] for v in sweep]
+    if args.placebo:
+        wi, G, R = "weather (issue)", "GFS area", "GFS regional"
+        placebos = ["Prithvi tokens", "tokens placebo shift +7d", "tokens placebo shift -7d"] + [f"tokens placebo shuffle s{k}" for k in range(3)]
+        combos = [[wi, G], [wi, G, R]] + [[wi, G, v] for v in placebos] + [[wi, G, R, v] for v in placebos]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -274,6 +308,9 @@ def main() -> None:
         blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
         blocks["Prithvi tokens"], frac = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)
         print(f"  pooled tokens: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
+        if args.placebo:
+            for name, src in placebo_index(targets, ~np.isnan(blocks["Prithvi tokens"][:, 0])).items():
+                blocks[name] = blocks["Prithvi tokens"][src]
         if args.pc_sweep is not None:
             blocks["tokens pooled full"] = sys_blocks["Prithvi tokens (raw)"]
             for k in args.pc_sweep:
