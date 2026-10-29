@@ -164,6 +164,9 @@ def main() -> None:
                              "model retrained: shifted +7 / -7 days, and shuffled within the same calendar month and the "
                              "same 3-hour time of day (3 seeds), which keeps season and time of day but not the day's "
                              "weather. Compared with the real tokens, on top of GFS and of GFS + GFS regional")
+    parser.add_argument("--loyo", action="store_true",
+                        help="Leave-one-year-out folds: train on every other year in --years, not only earlier ones "
+                             "(supplementary; not a forecasting setup)")
     args = parser.parse_args()
     if args.placebo:
         args.regional = True
@@ -303,6 +306,8 @@ def main() -> None:
     lmp_all, gas_all = df["lmp_total"].to_numpy(), df["gas"].to_numpy()
     for test_year in args.test_years:
         tr, te = ok & (year < test_year) & (year >= min(args.years)), ok & (year == test_year)
+        if args.loyo:
+            tr = ok & (year != test_year) & (year >= min(args.years))
         train_times = np.zeros(len(targets), bool)
         train_times[np.unique(ti[tr])] = True
         blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
@@ -327,7 +332,7 @@ def main() -> None:
               f"{hard.loc[te, 'cold_snap'].sum()} cold-snap and {hard.loc[te, 'heat_wave'].sum()} heat-wave test hours", flush=True)
         for target in args.targets:
             y_fit = df[f"y_{target}"].to_numpy()
-            print(f"\n[{target}, test {test_year}, train {min(args.years)}-{test_year - 1}] train {tr.sum()} h, test {te.sum()} h; "
+            print(f"\n[{target}, test {test_year}, train {'all other years' if args.loyo else f'{min(args.years)}-{test_year - 1}'}] train {tr.sum()} h, test {te.sum()} h; "
                   f"test price mean ${lmp_all[te].mean():.2f}, sd ${lmp_all[te].std():.2f}", flush=True)
             for combo in combos:
                 X = df[CALENDAR + lag_cols[target] + gas_cols].copy()
