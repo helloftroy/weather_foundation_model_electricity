@@ -40,6 +40,6 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 python "${REPO_ROOT}/src/isone/download_isone_rr_forecast.py" \
   --start "${START:-2021-01-01}" \
   --end "${END:-2024-12-31}" \
-  --out-dir "${SCRATCH_ROOT}/data/isone_forecast"
+  --out-dir "${SCRATCH_ROOT}/data/isone_forecast" ${SERIES:+--series ${SERIES}}
 
 echo "Job finished: $(date)"
