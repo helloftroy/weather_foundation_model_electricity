@@ -1525,6 +1525,69 @@ Caveats: one seed; 50 extra features versus 6; the MERRA-2 analysis at
 issue time is a reanalysis, not an operational analysis (see the GEOS-FP
 note above).
 
+### Known gas: full tables (hard days and top hours)
+
+Calendar features in every price model: hour, day of week, day of year,
+month, weekend, federal holiday. Demand models add zone. **Year is not a
+feature, deliberately:** in a year-ahead fold the test year never occurs
+in training, so a tree model would treat it as the last training year (a
+crude "latest regime" flag); the explicit gas features are the principled
+version of that information.
+
+Henry Hub known. MAE ($/MWh) overall / on cold-snap days / heat-wave days /
+top 5% price hours; Δ vs "+ old weather + GFS" overall and on cold snaps.
+
+2023 (4 cold-snap days, 6 heat-wave days in the test year):
+
+| + ... | MAE | cold snap | heat wave | top 5% | Δ all | Δ cold snap |
+|---|---|---|---|---|---|---|
+| (calendar + past prices + gas only) | 12.41 | 101.61 | 26.58 | 54.17 | +4.01 [+2.46, +5.94] | +18.40 |
+| old weather | 11.10 | 101.52 | 24.72 | 52.67 | +2.69 [+1.49, +4.03] | +18.31 |
+| old weather + GFS | 8.41 | 83.21 | 17.64 | 41.82 | | |
+| old weather + decoder | 8.59 | 83.46 | 20.23 | 41.98 | +0.18 [-0.08, +0.47] | +0.25 |
+| old weather + GFS + decoder | 8.21 | 79.27 | 18.20 | 40.38 | -0.20 [-0.40, -0.01] | -3.94 |
+| old weather + tokens | 8.64 | 82.18 | 20.91 | 44.49 | +0.23 [-0.23, +0.72] | -1.03 |
+| old weather + GFS + tokens | 7.55 | 76.78 | 16.55 | 39.11 | -0.86 [-1.33, -0.45] | -6.43 [-9.35, +2.31] |
+| old weather + GFS + decoder + tokens | 7.47 | 74.85 | 15.92 | 38.09 | -0.94 [-1.43, -0.50] | -8.36 |
+| old weather + decoder + tokens | 7.86 | 76.44 | 18.62 | 39.24 | -0.55 [-1.00, -0.11] | -6.77 |
+| old weather + actual area | 8.69 | 83.41 | 17.95 | 41.89 | +0.28 [+0.02, +0.51] | +0.20 |
+
+2024 (14 cold-snap days, 15 heat-wave days):
+
+| + ... | MAE | cold snap | heat wave | top 5% | Δ all | Δ cold snap |
+|---|---|---|---|---|---|---|
+| (calendar + past prices + gas only) | 12.63 | 32.52 | 27.05 | 59.01 | +5.02 [+2.54, +8.25] | +13.86 |
+| old weather | 12.01 | 24.59 | 26.16 | 51.19 | +4.41 [+2.08, +7.62] | +5.93 |
+| old weather + GFS | 7.60 | 18.66 | 20.75 | 33.91 | | |
+| old weather + decoder | 7.84 | 20.42 | 21.99 | 35.53 | +0.23 [-0.05, +0.56] | +1.76 |
+| old weather + GFS + decoder | 7.65 | 19.24 | 21.31 | 33.00 | +0.05 [-0.22, +0.30] | +0.58 |
+| old weather + tokens | 7.47 | 17.24 | 22.69 | 39.27 | -0.13 [-0.65, +0.42] | -1.41 |
+| old weather + GFS + tokens | 6.74 | 15.48 | 19.53 | 30.93 | -0.86 [-1.23, -0.52] | -3.18 [-8.09, -0.19] |
+| old weather + GFS + decoder + tokens | 6.80 | 17.14 | 20.17 | 31.40 | -0.80 [-1.11, -0.50] | -1.52 |
+| old weather + decoder + tokens | 6.99 | 17.30 | 20.63 | 33.12 | -0.62 [-0.95, -0.25] | -1.36 |
+| old weather + actual area | 8.03 | 21.48 | 20.61 | 35.11 | +0.42 [+0.10, +0.78] | +2.83 |
+
+Henry Hub and Algonquin both known (MAE 2023 / 2024; Δ vs GFS):
+
+| + ... | MAE | Δ 2023 | Δ 2024 |
+|---|---|---|---|
+| (gas only) | 11.65 / 11.61 | +3.13 | +4.18 |
+| old weather + GFS | 8.52 / 7.43 | | |
+| old weather + decoder | 8.56 / 7.58 | +0.05 [-0.21, +0.32] | +0.15 [-0.22, +0.51] |
+| old weather + GFS + decoder | 8.25 / 7.51 | -0.27 [-0.55, -0.02] | +0.08 [-0.17, +0.31] |
+| old weather + tokens | 8.64 / 7.48 | +0.12 [-0.45, +0.69] | +0.05 [-0.51, +0.66] |
+| old weather + GFS + tokens | 7.72 / 6.73 | -0.80 [-1.34, -0.33] | -0.70 [-1.10, -0.34] |
+| old weather + GFS + decoder + tokens | 7.75 / 6.76 | -0.77 [-1.36, -0.25] | -0.67 [-1.02, -0.36] |
+| old weather + decoder + tokens | 7.75 / 6.93 | -0.77 [-1.38, -0.23] | -0.50 [-0.84, -0.16] |
+| old weather + actual area | 8.83 / 7.77 | +0.31 [+0.04, +0.59] | +0.34 [-0.06, +0.78] |
+
+MERRA-2 fields control, full rows (Henry Hub known; MAE 2023 / 2024, cold
+snap 2023 / 2024, top 5% 2023 / 2024):
+- old weather + MERRA-2 fields (no GFS): 9.12 / 8.52; 82.1 / 20.9; 42.9 / 45.6;
+  Δ vs GFS +0.71 / +0.92 (significantly worse than GFS).
+- old weather + GFS + MERRA-2 fields: 7.64 / 7.22; 79.1 / 16.9; 39.3 / 34.7.
+- old weather + GFS + MERRA-2 fields + tokens: 7.44 / 6.82; 73.7 / 15.4; 38.6 / 32.3.
+
 ## Price: token readout, PCA or not, pooled or spatial (2026-10-26)
 
 Same setting as the known-gas section (raw LMP, Henry Hub known as a
@@ -1624,6 +1687,58 @@ highest system demand. MAPE (%), mean over zones. Script:
 - Cheap next step suggested by this: a bridge-day / holiday-adjacent
   feature (day after Thanksgiving, July 3, December 24/26).
 
+### The 12 worst days of "old weather + GFS + decoder", in detail
+
+Daily MAPE (%), mean over zones, for that model, GFS alone, GFS + tokens,
+and actual weather (ceiling). From `results/demand_hard_days/
+demand_daily_mape.csv`.
+
+2023:
+
+| Day | GFS | GFS + decoder | GFS + tokens | actual | flag |
+|---|---|---|---|---|---|
+| Mon May 29 (Memorial Day) | 13.6 | 14.0 | 14.3 | 11.7 | holiday |
+| Mon Dec 25 | 10.7 | 10.3 | 8.8 | 9.9 | holiday |
+| Fri Jul 14 | 8.5 | 9.7 | 8.1 | 7.6 | |
+| Sat Feb 04 | 9.8 | 9.6 | 6.3 | 9.9 | cold snap |
+| Fri Nov 24 (day after Thanksgiving) | 9.2 | 9.2 | 9.0 | 7.3 | not flagged |
+| Sun Jul 30 | 9.0 | 9.2 | 10.2 | 8.6 | |
+| Sun Aug 20 | 10.7 | 8.8 | 12.3 | 7.4 | |
+| Sun Jul 09 | 7.6 | 8.5 | 6.1 | 6.8 | |
+| Mon Dec 18 (wind storm, outages in Maine) | 7.9 | 8.5 | 7.9 | 8.2 | |
+| Thu Nov 23 (Thanksgiving) | 8.4 | 8.4 | 7.2 | 8.2 | holiday |
+| Mon Jul 03 (bridge day) | 8.8 | 8.3 | 8.2 | 8.9 | not flagged |
+| Tue Jul 04 | 9.0 | 8.1 | 12.6 | 10.2 | holiday |
+
+2024:
+
+| Day | GFS | GFS + decoder | GFS + tokens | actual | flag |
+|---|---|---|---|---|---|
+| Thu Apr 04 | 9.1 | 9.2 | 9.3 | 9.3 | |
+| Fri Aug 16 | 8.6 | 9.2 | 9.5 | 6.4 | |
+| Wed Jun 19 (Juneteenth) | 9.0 | 8.7 | 6.5 | 12.3 | holiday |
+| Thu Apr 25 | 9.0 | 8.3 | 10.9 | 7.0 | |
+| Fri Jun 28 | 7.7 | 8.2 | 8.7 | 7.8 | |
+| Sat Jun 15 | 6.7 | 8.2 | 6.3 | 7.4 | |
+| Tue Apr 23 | 8.3 | 8.1 | 10.0 | 8.9 | |
+| Sat Oct 12 | 7.0 | 8.0 | 6.9 | 6.7 | |
+| Sun Dec 22 | 7.9 | 8.0 | 6.2 | 6.7 | cold snap |
+| Fri Apr 26 | 8.0 | 7.9 | 7.5 | 7.2 | |
+| Tue May 07 | 8.5 | 7.8 | 6.6 | 7.8 | |
+| Sat Jun 01 | 8.2 | 7.8 | 8.1 | 7.0 | |
+
+Worst 5% of days (18 per year), mean daily MAPE:
+
+| Selected by | year | GFS | GFS + decoder | GFS + tokens | actual |
+|---|---|---|---|---|---|
+| actual-weather model (neutral) | 2023 | 8.28 | 8.32 | 8.71 | 8.67 |
+| actual-weather model (neutral) | 2024 | 7.26 | 7.16 | 6.92 | 8.25 |
+| GFS's own error (biased toward others) | 2023 | 9.08 | 8.62 | 8.89 | 8.19 |
+| GFS's own error (biased toward others) | 2024 | 8.04 | 7.77 | 7.89 | 7.75 |
+
+The "December 18 storm" and "rooftop solar on spring days" readings are
+plausible explanations, not tested.
+
 ## Demand against ISO-NE's own forecast (2026-10-27)
 
 **Data.** ISO-NE Three-Day Reliability Region Demand Forecast, every
@@ -1713,6 +1828,40 @@ weather + GFS 1.93 / 1.83.
   the bias correction is a simple hour x month x zone mean, and CatBoost
   with the forecast as a feature is a richer correction.
 
+### ISO-NE: further detail
+
+- Issue times (Eastern) of all system-forecast versions, count of hourly
+  values: mostly 03:00-04:59 (107,040) and 09:00-09:59 (110,232); the rest
+  are in-day updates spread over the day.
+- The latest version before each hour (shortest lead) has system MAPE
+  3.07% as published, versus 3.23% for the prior-day version over
+  2021-2024: the definition gap, not the lead, dominates the published
+  error.
+- Published prior-day system forecast, 2021-2024: forecast/actual ratio
+  0.986, bias -184 MW, correlation 0.9745; MAPE by year 2.63 / 2.89 / 3.48
+  / 3.90%. Mean error by local hour (MW): 00-05 about +90 to +100, 07 -48,
+  08 -351, 09 -646, 10 -829, 11 -904, 12 -914, 13 -845, 14 -701, 15 -502,
+  16 -248, 17 +9, 18-23 about +115 to +190.
+- Per region (prior-day, 2021-2024): median forecast/actual ratio CT
+  0.997, ME 1.008, NEMA 0.983, NH 0.999, RI 0.990, SEMA 1.000, VT 1.007,
+  WCMA 0.999; MAPE 3.6% (NH) to 5.6% (VT); midday 2024 bias -5.8% (ME) to
+  -11.3% (NEMA). Region shares of the system forecast vary over time (sd
+  0.3-0.9 percentage points), so the regions are not a fixed split.
+
+System-wide (sum of zones) comparison, with week-bootstrap Δ against the
+bias-corrected ISO-NE forecast (earlier demand predictions, same hours):
+
+| | MAPE 2023 | MAPE 2024 | Δ 2023 | Δ 2024 |
+|---|---|---|---|---|
+| ISO-NE published | 3.48 | 3.91 | +1.03 [+0.85, +1.23] | +1.30 [+1.09, +1.53] |
+| ISO-NE bias-corrected | 2.44 | 2.60 | | |
+| ours: old weather + GFS | 3.10 | 3.07 | +0.65 [+0.39, +0.93] | +0.47 [+0.24, +0.70] |
+| ours: + GFS + decoder | 3.01 | 2.97 | +0.57 [+0.31, +0.85] | +0.37 [+0.13, +0.62] |
+| ISO-NE as a feature + old weather + GFS | 1.93 | 1.83 | | |
+| ISO-NE as a feature + old weather + GFS + decoder | 1.94 | 1.81 | | |
+| ISO-NE as a feature + old weather + GFS + tokens | 1.91 | 1.91 | | |
+| ISO-NE as a feature + actual weather | 1.94 | 1.80 | | |
+
 ## Regional weather beyond New England (2026-10-28)
 
 **Data.** Wide box 32-50 N, 90-64 W. GFS 24-27 h forecasts
@@ -1801,12 +1950,43 @@ Script: `local/gfs_demand_benchmark.py --hard-days --regional
 - As expected: demand is local; price depends on the wider gas and
   electricity system.
 
-## Still to do (2020 onward)
+## Summary of findings so far (2026-10-29)
 
-- Run 2021-2024 the same way and repeat with training on earlier years
-  (year-ahead), which is the setting that matters.
-- Forecast test: embeddings with `LEAD_TIME=24`, compared against raw
-  inputs from 24 h earlier and against actual weather forecasts.
-- Fewer components (for example 5-10) for tokens and raw inputs on the
-  chronological split, to check whether the failure is simply too many
-  features.
+All 24 h ahead, year-ahead folds (test 2023 trained on 2021-22, test 2024
+trained on 2021-23), CatBoost with one seed.
+
+- **Temperature forecast.** Prithvi's 24 h decoder forecast beats GFS
+  against MERRA-2 over New England and over the wider region, but MERRA-2
+  is Prithvi's own starting data, so this comparison favours Prithvi.
+- **Demand.** A weather forecast is what matters; GFS and the Prithvi
+  decoder are roughly equal, GFS + decoder is our best (4.44 / 4.64% zonal
+  MAPE), at the actual-weather ceiling. Tokens alone are much worse; they
+  add nothing on top. Regional weather beyond New England does not help.
+  ISO-NE's own forecast, bias-corrected for a solar-shaped definition gap,
+  beats ours by 0.5-0.7 points; ISO-NE's forecast plus GFS beats ISO-NE by
+  8-14%, and Prithvi adds nothing to that. The worst days are holidays,
+  bridge days and events, not weather days.
+- **Price.** A forecast matters more than actual weather (day-ahead prices
+  are set on forecasts). The Prithvi tokens add about 10% on top of GFS
+  even with the gas price known; pooled PCA-50 is the best readout. In
+  2023 that gain is mostly regional weather (the same gain comes from
+  regional GFS or Prithvi fields, or from the raw MERRA-2 analysis); in
+  2024 it is not explained by regional surface weather or by the raw
+  analysis. Cold-snap days remain poorly predicted by everything.
+
+## Still to do
+
+Done since this list was first written: 2021-2024 with year-ahead folds;
+the lead-24 forecast test against GFS; readout and component checks.
+
+Open:
+- Upper-air control for price: Prithvi's upper-air input fields (big-scale
+  circulation) as a block, like the MERRA-2 fields control, to see what
+  the 2024 token gain carries.
+- More seeds (and a second model configuration) for the price token
+  results, whose differences are close to the interval widths.
+- A bridge-day / holiday-adjacent calendar feature for demand.
+- Fair initialisation: run Prithvi from an operational analysis (GEOS-FP)
+  rather than MERRA-2 reanalysis (noted, deferred).
+- Optionally, a longer record (more test years) to firm up hard-day
+  results, which rest on few days (2023 has 4 cold-snap days).
