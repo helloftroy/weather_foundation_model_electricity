@@ -133,7 +133,12 @@ def main() -> None:
     parser.add_argument("--regional", action="store_true",
                         help="Add regional weather outside New England (regional_weather.py: five areas x 6 variables, "
                              "from GFS, the Prithvi decoder and actual MERRA-2) and compare with and without it")
+    parser.add_argument("--pc-sweep", type=int, nargs="*", default=None,
+                        help="Token PCA sweep: pooled tokens with each of these numbers of principal components, plus the full "
+                             "2,560 dimensions, each added to GFS and to GFS + GFS regional (e.g. --pc-sweep 10 25 50 100 250 500)")
     args = parser.parse_args()
+    if args.pc_sweep is not None:
+        args.regional = True
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
     zn = list(ZONES)
@@ -248,6 +253,10 @@ def main() -> None:
         wi, G, D, T = "weather (issue)", "GFS area", "Prithvi area", "Prithvi tokens"
         combos = [[wi, G], [wi, G, "GFS regional"], [wi, D], [wi, D, "Prithvi regional"], [wi, G, D], [wi, G, D, "GFS regional", "Prithvi regional"],
                   [wi, G, T], [wi, G, "GFS regional", T], [wi, "true area"], [wi, "true area", "true regional"]]
+    if args.pc_sweep is not None:
+        wi, G, R = "weather (issue)", "GFS area", "GFS regional"
+        sweep = [f"tokens PC{k}" for k in args.pc_sweep] + ["tokens pooled full"]
+        combos = [[wi, G], [wi, G, R]] + [[wi, G, v] for v in sweep] + [[wi, G, R, v] for v in sweep]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -265,6 +274,11 @@ def main() -> None:
         blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
         blocks["Prithvi tokens"], frac = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)
         print(f"  pooled tokens: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
+        if args.pc_sweep is not None:
+            blocks["tokens pooled full"] = sys_blocks["Prithvi tokens (raw)"]
+            for k in args.pc_sweep:
+                blocks[f"tokens PC{k}"], frac = pca(sys_blocks["Prithvi tokens (raw)"], train_times, k)
+                print(f"  pooled tokens: {k} PCs keep {frac:.1%} of the (standardised) variance", flush=True)
         if args.token_variants:
             blocks["tokens pooled full"] = sys_blocks["Prithvi tokens (raw)"]
             for k, v in spatial_tokens(token_paths, train_times, (10, 25)).items():

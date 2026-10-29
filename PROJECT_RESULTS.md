@@ -1950,6 +1950,60 @@ Script: `local/gfs_demand_benchmark.py --hard-days --regional
 - As expected: demand is local; price depends on the wider gas and
   electricity system.
 
+## Price: token principal-component sweep (2026-10-29)
+
+Does the 50-PC choice drive the token result? Raw day-ahead hub LMP,
+Henry Hub known as a feature, year-ahead folds, same CatBoost settings (one
+seed). Pooled tokens (box mean of the final encoder layer over New
+England), standardised, k principal components fitted on training times,
+for k = 10, 25, 50, 100, 250, 500, plus all 2,560 dimensions without PCA.
+Each is added to "old weather + GFS" (8.41 / 7.60) and to "old weather +
+GFS + GFS regional" (7.42 / 7.58). Script: `local/price_benchmark.py
+--targets lmp --gas-features henryhub --pc-sweep 10 25 50 100 250 500`;
+outputs `results/price_known_gas/pc_sweep/` (increments in
+`pc_sweep_increments.csv`); figure `results/figures/
+price_token_pc_sweep.png/.pdf` (`local/plot_pc_sweep.py`).
+
+Variance kept (2023 fold): 10 PCs 41.7%, 25 62.1%, 50 76.1%, 100 86.5%,
+250 94.6%, 500 97.8%.
+
+Δ MAE ($/MWh) from adding the tokens, 95% week-block bootstrap:
+
+| PCs | over GFS 2023 | over GFS + regional 2023 | over GFS 2024 | over GFS + regional 2024 |
+|---|---|---|---|---|
+| 10 | -0.47 [-0.86, -0.12] | -0.10 [-0.35, +0.11] | -0.66 [-1.06, -0.29] | -0.58 [-0.83, -0.35] |
+| 25 | -0.59 [-1.03, -0.22] | -0.18 [-0.44, +0.03] | -0.68 [-1.04, -0.32] | -0.82 [-1.19, -0.47] |
+| 50 | -0.86 [-1.33, -0.45] | -0.28 [-0.56, -0.02] | -0.86 [-1.23, -0.52] | -0.80 [-1.19, -0.45] |
+| 100 | -0.89 [-1.49, -0.40] | -0.05 [-0.32, +0.23] | -0.85 [-1.20, -0.53] | -0.77 [-1.22, -0.40] |
+| 250 | -0.53 [-1.03, -0.06] | -0.13 [-0.49, +0.23] | -0.69 [-1.09, -0.29] | -0.79 [-1.22, -0.42] |
+| 500 | -0.52 [-1.06, -0.04] | +0.01 [-0.34, +0.33] | -0.45 [-0.83, -0.06] | -0.59 [-1.03, -0.21] |
+| 2,560 (full) | -0.60 [-1.29, -0.03] | +0.09 [-0.42, +0.60] | -0.43 [-0.86, +0.06] | -0.37 [-0.81, +0.01] |
+
+Figure caption (for the paper): Change in day-ahead price MAE from adding
+Prithvi encoder tokens, by number of principal components, test years 2023
+(left) and 2024 (right). Blue: tokens added to old weather + GFS; red:
+added to old weather + GFS + regional GFS. Points are observed differences
+on the same test hours; bars are 95% week-block bootstrap intervals;
+negative means the tokens reduce error. All models also have calendar
+features, past prices and the Henry Hub price.
+
+- **The 50-PC choice did not create the result.** The gain is flat
+  between about 25 and 250 PCs (2024: -0.68 to -0.86 over GFS, -0.77 to
+  -0.82 over GFS + regional), with 50-100 at or near the best. No count
+  improves substantially on 50.
+- **Too much or too little compression both cost a little:** 10 PCs
+  (42% of variance) gives somewhat less; 500 and the full 2,560 give less
+  and wider intervals, consistent with CatBoost having too many correlated
+  candidates for about 17-26 thousand training hours.
+- **Over GFS + regional weather** the picture is the same as before: in
+  2023 the token gain is small at every k (only 50 PCs reaches
+  significance, -0.28), because regional weather already carries it; in
+  2024 the gain is about -0.8 for 25-250 PCs and significant at every k
+  except the full set.
+- Caveat: one seed; neighbouring k differ by less than the interval
+  widths, so the shape (flat plateau, decline at the extremes) is the
+  finding, not the exact best k.
+
 ## Decoder check on all variables, and a GFS shortwave problem (2026-10-29)
 
 **Decoder.** 24 h ahead over the zone areas, against MERRA-2 at the target
@@ -2015,7 +2069,9 @@ trained on 2021-23), CatBoost with one seed.
   2023 that gain is mostly regional weather (the same gain comes from
   regional GFS or Prithvi fields, or from the raw MERRA-2 analysis); in
   2024 it is not explained by regional surface weather or by the raw
-  analysis. Cold-snap days remain poorly predicted by everything.
+  analysis. The gain is flat from about 25 to 250 PCs, so it does not
+  depend on the 50-PC choice. Cold-snap days remain poorly predicted by
+  everything.
 
 ## Still to do
 
