@@ -60,6 +60,19 @@ STATIC_SURFACE_VARS = ["FRACI", "FRLAND", "FROCEAN", "PHIS"]
 VERTICAL_VARS = ["CLOUD", "H", "OMEGA", "PL", "QI", "QL", "QV", "T", "U", "V"]
 LEVELS = [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0, 71.0, 72.0]
 NO_PADDING = {"level": [0, 0], "lat": [0, 0], "lon": [0, 0]}
+# Extents for --pooled (lat_min, lat_max, lon_min, lon_max). "ne" is the default --token-box (New England);
+# "northeast" an intermediate box; "wide" the --wide-box used for regional weather; the last five are the
+# regional-weather areas of local/regional_weather.py.
+POOL_EXTENTS = {
+    "ne": (40.0, 48.0, -75.0, -66.25),
+    "northeast": (38.0, 50.0, -80.0, -62.0),
+    "wide": (32.0, 50.0, -90.0, -64.0),
+    "NY-PA": (40.0, 45.0, -80.0, -75.0),
+    "MidAtlantic": (36.0, 40.0, -80.0, -74.0),
+    "GreatLakes": (38.0, 46.0, -90.0, -80.0),
+    "Southeast": (32.0, 36.0, -90.0, -75.0),
+    "Quebec-Mar": (45.0, 50.0, -80.0, -64.0),
+}
 # The global MERRA-2 grid has 361 latitude rows (both poles); the model uses 360.
 # Dropping the last row is what the repo's own notebooks do.
 GLOBAL_PADDING = {"level": [0, 0], "lat": [0, -1], "lon": [0, 0]}
@@ -150,7 +163,18 @@ def main() -> None:
     parser.add_argument("--token-box", type=float, nargs=4, default=[40.0, 48.0, -75.0, -66.25],
                         metavar=("LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="Patches whose centres fall in this box are saved (default: New England)")
+    parser.add_argument("--pooled", action="store_true",
+                        help="Also save, per extent in POOL_EXTENTS: the final-layer tokens averaged over the extent's patches "
+                             "(*_pooled_tokens.npy, [time, extent, embed_dim], float16), and all 160 input channels at issue time "
+                             "and decoder output channels for the target time averaged over its pixels (*_pooled_inputs.npy, "
+                             "*_pooled_recon.npy, [time, extent, channel], float32, normalised). Small; for the mechanistic "
+                             "controls (wider latent state, upper-air conditions). Requires --out-tokens.")
+    parser.add_argument("--save-wide-patch-tokens", action="store_true",
+                        help="Also save every final-layer patch token over the 'wide' extent (*_wide_tokens.npy, float16, "
+                             "about 5-6 GB per year); for later interpretability, not needed for the pooled tests")
     args = parser.parse_args()
+    if (args.pooled or args.save_wide_patch_tokens) and args.out_tokens is None:
+        raise SystemExit("--pooled / --save-wide-patch-tokens need --out-tokens (they share its file stem).")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -381,6 +405,24 @@ def main() -> None:
                     "inputs": np.lib.format.open_memmap(f"{stem}_wide_inputs5.npy", mode="w+", dtype=np.float16, shape=wshape)}
             print(f"Wide box: {wshape[2]} x {wshape[3]} pixels, lat {grid_lats[w_lat[0]]}..{grid_lats[w_lat[-1]]}, "
                   f"lon {grid_lons[w_lon[0]]}..{grid_lons[w_lon[-1]]} ({2 * np.prod(wshape) * 2 / 1e9:.2f} GB for both files)")
+        pooled = wide_tok = None
+        if args.pooled:
+            ext_patches, ext_px = {}, {}
+            for name, box in POOL_EXTENTS.items():
+                ext_patches[name] = patches_in(box, f"pool extent {name}")
+                la = np.where((grid_lats >= box[0]) & (grid_lats <= box[1]))[0]
+                lo = np.where((grid_lons >= box[2]) & (grid_lons <= box[3]))[0]
+                ext_px[name] = (slice(int(la[0]), int(la[-1]) + 1), slice(int(lo[0]), int(lo[-1]) + 1))
+                e = ext_patches[name]
+                print(f"  pool extent {name:12s}: {e[1] - e[0]} x {e[3] - e[2]} patches, {len(la)} x {len(lo)} pixels")
+            n_ext, n_ch = len(POOL_EXTENTS), p["in_channels"]
+            pooled = {"tokens": np.lib.format.open_memmap(f"{stem}_pooled_tokens.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_ext, embed_dim)),
+                      "inputs": np.lib.format.open_memmap(f"{stem}_pooled_inputs.npy", mode="w+", dtype=np.float32, shape=(n_samples, n_ext, n_ch)),
+                      "recon": np.lib.format.open_memmap(f"{stem}_pooled_recon.npy", mode="w+", dtype=np.float32, shape=(n_samples, n_ext, n_ch))}
+        if args.save_wide_patch_tokens:
+            wr0, wr1, wc0, wc1 = patches_in(POOL_EXTENTS["wide"], "wide patch tokens")
+            wide_tok = np.lib.format.open_memmap(f"{stem}_wide_tokens.npy", mode="w+", dtype=np.float16, shape=(n_samples, wr1 - wr0, wc1 - wc0, embed_dim))
+            print(f"Saving wide patch tokens: {wr1 - wr0} x {wc1 - wc0} patches ({wide_tok.nbytes / 1e9:.2f} GB)")
         norm_mu = model.input_scalers_mu.reshape(1, -1, 1, 1)
         norm_sd = model.input_scalers_sigma.reshape(1, -1, 1, 1) + model.input_scalers_epsilon
         print(f"Also saving: normalised inputs {inputs_out.shape}, decoder output and climatology for the {n_sfc} surface variables, "
@@ -439,6 +481,17 @@ def main() -> None:
                     wide["recon"][idx:idx + b] = f16(recon[wide_px])
                     wide["inputs"][idx:idx + b] = f16(x_now[wide_px])
                 climate_out[idx:idx + b] = f16(((batch["climate"] - norm_mu) / norm_sd)[px][:, :n_sfc])
+                if pooled is not None or wide_tok is not None:
+                    grid_tok = patch_grid(x_encoded, n_global_lat, n_global_lon, local_lat, local_lon)   # [B, rows, cols, C]
+                if pooled is not None:
+                    for e, name in enumerate(POOL_EXTENTS):
+                        r0e, r1e, c0e, c1e = ext_patches[name]
+                        pooled["tokens"][idx:idx + b, e] = grid_tok[:, r0e:r1e, c0e:c1e].mean(dim=(1, 2)).to(torch.float16).cpu().numpy()
+                        pla, plo = ext_px[name]
+                        pooled["inputs"][idx:idx + b, e] = x_now[:, :, pla, plo].mean(dim=(2, 3)).float().cpu().numpy()
+                        pooled["recon"][idx:idx + b, e] = recon[:, :, pla, plo].mean(dim=(2, 3)).float().cpu().numpy()
+                if wide_tok is not None:
+                    wide_tok[idx:idx + b] = grid_tok[:, wr0:wr1, wc0:wc1].to(torch.float16).cpu().numpy()
                 if idx == 0:
                     target = (batch["y"] - norm_mu) / norm_sd
                     i_t2m = SURFACE_VARS.index("T2M")
@@ -466,7 +519,8 @@ def main() -> None:
     print(f"Wrote {len(df)} rows x {len(df.columns)} cols to {args.out_parquet}")
 
     if tokens_out is not None:
-        for arr in [tokens_out, inputs_out, recon_out, climate_out, *layer_out.values(), *(wide.values() if wide else [])]:
+        for arr in [tokens_out, inputs_out, recon_out, climate_out, *layer_out.values(), *(wide.values() if wide else []),
+                    *(pooled.values() if pooled else []), *([wide_tok] if wide_tok is not None else [])]:
             arr.flush()
         meta = {
             "layout": "[time, lat_patch, lon_patch, embed_dim], float16; encoder output tokens, un-pooled, mask units in map order",
@@ -493,6 +547,17 @@ def main() -> None:
                          "pixel_lats": grid_lats[wide_px[2]].tolist(), "pixel_lons": grid_lons[wide_px[3]].tolist(),
                          "layout": "[time, channel, lat_pixel, lon_pixel], normalised; recon = decoder output for the target time, "
                                    "inputs = true values at the issue time"}} if wide else {}),
+            **({"pooled": {"extents": {k: list(v) for k, v in POOL_EXTENTS.items()},
+                           "tokens_file": f"{stem.name}_pooled_tokens.npy", "inputs_file": f"{stem.name}_pooled_inputs.npy",
+                           "recon_file": f"{stem.name}_pooled_recon.npy",
+                           "channels": list(SURFACE_VARS) + [f"{v}_{int(l)}" for v in VERTICAL_VARS for l in LEVELS],
+                           "layout": "tokens [time, extent, embed_dim] float16, final encoder layer averaged over the extent's patches "
+                                     "(centres inside the box); inputs/recon [time, extent, channel] float32, normalised with the "
+                                     "model's input mean and sigma, averaged over the extent's pixels; inputs = issue time, "
+                                     "recon = decoder output for the target time (issue + lead)"}} if pooled else {}),
+            **({"wide_tokens": {"file": f"{stem.name}_wide_tokens.npy", "box": list(POOL_EXTENTS["wide"]),
+                                "patch_lat_centers": lat_c[wr0:wr1].tolist(), "patch_lon_centers": lon_c[wc0:wc1].tolist()}}
+               if wide_tok is not None else {}),
         }
         args.out_tokens.with_suffix(".json").write_text(json.dumps(meta))
         print(f"Wrote patch tokens {tokens_out.shape} to {args.out_tokens}")

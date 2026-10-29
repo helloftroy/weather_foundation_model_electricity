@@ -76,6 +76,10 @@ BATCH_SIZE="${BATCH_SIZE:-2}"
 # Optional larger box for regional weather features, "LAT_MIN LAT_MAX LON_MIN LON_MAX",
 # e.g. WIDE_BOX="32 50 -90 -64" (Northeast, mid-Atlantic, Ohio valley). Empty = off.
 WIDE_BOX="${WIDE_BOX:-}"
+# POOLED=1: also save pooled tokens / inputs / decoder output per extent (small; see --pooled).
+# WIDE_PATCH_TOKENS=1: also save every patch token over the wide box (~5-6 GB per year).
+POOLED="${POOLED:-}"
+WIDE_PATCH_TOKENS="${WIDE_PATCH_TOKENS:-}"
 
 python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --weights-dir "${WEIGHTS_DIR}" \
@@ -89,6 +93,8 @@ python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --out-tokens "${OUT_TOKENS}" \
   --lead-time "${LEAD_TIME}" \
   --layers ${LAYERS} \
-  ${WIDE_BOX:+--wide-box ${WIDE_BOX}}
+  ${WIDE_BOX:+--wide-box ${WIDE_BOX}} \
+  ${POOLED:+--pooled} \
+  ${WIDE_PATCH_TOKENS:+--save-wide-patch-tokens}
 
 echo "Job finished: $(date)"
