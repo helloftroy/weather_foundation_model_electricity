@@ -2189,59 +2189,20 @@ are retrained with the given tokens and also use calendar features, past
 prices and the Henry Hub price. In 2024 over GFS + regional, shuffling
 removes 60-68% of the real-token gain.
 
-## Price: more held-out years (leave-one-year-out) (2026-10-29)
+## Price: another rolling-origin test year (2022) (2026-10-29)
 
-Is "tokens help on top of GFS" typical, and is "regional weather explains
-the tokens" typical? Raw LMP, Henry Hub known, same feature sets as the
-regional section. Two designs:
-- rolling-origin 2022, trained on 2021 only (2020 has no GFS in the AWS
-  archive): train 8,520 h;
-- leave-one-year-out (LOYO) for each of 2021-2024, trained on the other
-  three years (about 26,000 h). Diagnostic, not a forecasting setup: for
-  2021-2023 the training years include later years. LOYO 2024 is the same
-  fold as rolling-origin 2024.
-Script: `local/price_benchmark.py --targets lmp --gas-features henryhub
---regional [--loyo] --test-years ...`; outputs `results/regional/
-price_rolling2022/`, `results/regional/price_loyo/` (`folds_summary.csv`).
+Goal: a third rolling-origin test year, to see whether the 2023-2024 token
+and regional-weather results are typical. 2022 trained on 2021 alone (the
+AWS GFS archive starts in 2021) is not usable: with one training year the
+model does not cover 2022's price levels (mean $86 vs $46 in 2021), and
+every richer model gets worse (e.g. old weather + GFS 19.75, + GFS
+regional 20.33, + tokens 21.30 $/MWh). Pending: 2020 GFS from NCAR GDEX
+(d084001; `src/gfs/download_gfs_forecasts.py --source ncar`, verified
+identical to the AWS files on 2021 runs) and a 2020 wide-box / pooled
+Prithvi run, then test 2022 trained on 2020-2021.
 
-MAE ($/MWh) of old weather + GFS / + GFS regional / + GFS regional + tokens:
-rolling 2022 19.75 / 20.33 / 21.30; LOYO 2021 9.53 / 8.96 / 9.51; LOYO
-2022 15.76 / 15.94 / 16.13; LOYO 2023 8.49 / 7.83 / 7.29; LOYO 2024 7.60 /
-7.58 / 6.78. Test-year mean price: 2021 $46, 2022 $86, 2023 $37, 2024 $42.
-
-Paired Δ MAE, 95% week-block bootstrap (negative = the first set is better):
-
-| Comparison | rolling 2022 | LOYO 2021 | LOYO 2022 | LOYO 2023 | LOYO 2024 |
-|---|---|---|---|---|---|
-| + GFS regional vs GFS | +0.58 [+0.09, +1.09] | -0.56 [-1.00, -0.10] | +0.18 [-0.63, +1.04] | -0.66 [-1.03, -0.31] | -0.02 [-0.42, +0.41] |
-| + tokens vs GFS | +1.85 [+1.14, +2.63] | -0.01 [-0.47, +0.41] | +0.40 [-0.32, +1.20] | -0.76 [-1.12, -0.42] | -0.86 [-1.23, -0.52] |
-| + tokens vs GFS + regional | +0.96 [+0.48, +1.48] | +0.54 [+0.25, +0.83] | +0.19 [-0.24, +0.66] | -0.54 [-1.05, -0.16] | -0.80 [-1.19, -0.45] |
-| decoder + Prithvi regional vs GFS + GFS regional | -0.27 [-0.51, -0.04] | -0.16 [-0.67, +0.31] | +0.12 [-0.30, +0.59] | -0.23 [-0.51, +0.00] | -0.13 [-0.40, +0.16] |
-| + decoder + Prithvi regional vs GFS + regional | +0.45 [+0.06, +0.88] | -0.03 [-0.42, +0.34] | -0.11 [-0.44, +0.28] | -0.31 [-0.55, -0.11] | -0.43 [-0.63, -0.25] |
-| actual area + regional vs GFS + regional | +0.40 [+0.10, +0.76] | -0.38 [-0.77, -0.05] | -0.94 [-1.43, -0.45] | -0.05 [-0.21, +0.11] | -0.25 [-0.46, -0.05] |
-
-- **The token gain is not typical: it appears in 2 of 4 held-out years**
-  (2023, 2024). In 2021 the tokens make the model significantly worse on
-  top of GFS + regional (+0.54); in 2022 they do nothing.
-- **Regional surface weather helps in 2021 and 2023, not 2022 or 2024**,
-  and does not track the token gain; "regional weather explains the token
-  gain" was specific to 2023.
-- 2022 (gas-spike year, mean $86, sd $49) is dominated by fuel-price
-  swings; actual weather still beats GFS by $0.94 there, so better weather
-  information could help, but neither Prithvi block delivers it.
-- The Prithvi decoder with its regional fields is never significantly
-  worse than GFS with its regional fields (it matches GFS as a forecast);
-  adding it on top of GFS helps in 2023 and 2024 only.
-- Rolling-origin 2022 trained on 2021 alone is not usable: every richer
-  model is worse (tokens +1.85), because one quiet training year does not
-  prepare the model for 2022's price levels. A proper rolling-origin 2022
-  needs 2020 GFS (available from NCAR GDEX d084001, anonymous byte-range
-  access but no index files, about 340 MB per file) and a 2020 wide-box
-  Prithvi run; given LOYO 2022 shows no token gain, it is unlikely to
-  change the conclusion.
-- Implication: within years where they help, the tokens carry
-  day-specific atmospheric information (placebo section), but the gain is
-  regime- or event-dependent, not a consistent improvement over GFS.
+(A leave-one-year-out variant was run and discarded: it trains on later
+years to predict earlier ones, which a forecasting comparison must not do.)
 
 ## Decoder check on all variables, and a GFS shortwave problem (2026-10-29)
 
@@ -2318,10 +2279,7 @@ trained on 2021-23), CatBoost with one seed.
   within month and time of day, or shifted a week) removes most of the
   gain: the real tokens beat every placebo significantly, so they carry
   day-specific state; in 2024 about a third of the gain over GFS +
-  regional survives the shuffle (month-scale signal). But across four held-out years
-  (leave-one-year-out), the token gain appears only in 2023 and 2024; in
-  2021 the tokens hurt and in 2022 they do nothing, so the gain is
-  regime- or event-dependent rather than typical. Cold-snap days remain poorly predicted by
+  regional survives the shuffle (month-scale signal). Cold-snap days remain poorly predicted by
   everything.
 
 ## Still to do

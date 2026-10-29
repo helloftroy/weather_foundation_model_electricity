@@ -39,12 +39,14 @@ source "${CONDA_SH:-/scratch/morrill/users/hmp278/miniforge3/etc/profile.d/conda
 conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 
 # GRIB reader (pip wheels include the ecCodes library). Installed once.
-python -c "import eccodes" 2>/dev/null || pip install --quiet eccodes eccodeslib
+python -c "import eccodes, requests" 2>/dev/null || pip install --quiet eccodes eccodeslib requests
 
 python "${REPO_ROOT}/src/gfs/download_gfs_forecasts.py" \
   --year "${YEAR}" \
   --out-dir "${SCRATCH_ROOT}/data/gfs" \
   --workers "${WORKERS}" \
-  ${BOX:+--box ${BOX} --name ${NAME:-wide}}
+  ${BOX:+--box ${BOX} --name ${NAME:-wide}} \
+  ${SOURCE:+--source ${SOURCE}} \
+  ${ALSO_NE:+--also-ne}
 
 echo "Job finished: $(date)"

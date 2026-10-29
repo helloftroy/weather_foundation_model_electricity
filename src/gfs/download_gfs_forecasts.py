@@ -29,8 +29,29 @@ saved; at the end everything is combined into one file per year:
     gfs_ne_{year}.nc   dims (sample, lat, lon); coords run_time, lead_hours,
                        valid_time per sample
 Resumable: one small .npz per forecast file, skipped if present.
+
+--source ncar (for 2020 and earlier, which the AWS archive lacks): NCAR GDEX
+dataset d084001, "NCEP GFS 0.25 Degree Global Forecast Grids Historical
+Archive" (2015 onward; https://data.gdex.ucar.edu/d084001/YYYY/YYYYMMDD/
+gfs.0p25.YYYYMMDDHH.fFFF.grib2; public, anonymous byte-range access). It has
+no .idx files, so the index is built by reading each GRIB message's first
+512 bytes (section 0 gives the message length, section 4 the parameter and
+level) and jumping to the next, stopping once all six fields are found.
+The same fields as from AWS are identified by GRIB2 codes (discipline 0):
+TMP 0/0/0 and SPFH 0/1/0 at 2 m above ground; UGRD 0/2/2 and VGRD 0/2/3 at
+10 m; DSWRF 0/4/192 and USWRF 0/4/193 (NCEP local numbers) at the surface,
+time-averaged (product template 4.8). The fields sit in the last 30-40% of
+each file, so the scan starts from a message boundary found near 60% of the
+file (falling back to a scan from the start if a field is missed): about
+100 header reads per file instead of about 600. Checked against the AWS files on a 2021 run before use.
+
+--also-ne writes gfs_ne_YEAR.nc as well, cropped from the --box output
+(the New England box lies inside the wide box; for 2021 the crop
+reproduces gfs_ne_2021.nc exactly), so each file is scanned only once.
 """
 import argparse
+import struct
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -40,6 +61,7 @@ from pathlib import Path
 import eccodes
 import numpy as np
 import pandas as pd
+import requests
 import xarray as xr
 
 BUCKET = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
@@ -125,14 +147,137 @@ def decode(msg_bytes):
     return vals, np.linspace(lat0, lat1, nj), np.linspace(lon0, lon1, ni)
 
 
-def fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE):
+NCAR = "https://data.gdex.ucar.edu/d084001"
+GRIB_CODES = {  # output name: (discipline, category, number, first surface type, its scaled value, need a time average)
+    "TMP_2m": (0, 0, 0, 103, 2, False),
+    "SPFH_2m": (0, 1, 0, 103, 2, False),
+    "UGRD_10m": (0, 2, 2, 103, 10, False),
+    "VGRD_10m": (0, 2, 3, 103, 10, False),
+    "DSWRF_sfc": (0, 4, 192, 1, None, True),   # NCEP local parameter numbers (wgrib2 names them DSWRF / USWRF)
+    "USWRF_sfc": (0, 4, 193, 1, None, True),
+}
+
+
+_local = threading.local()
+
+
+def ncar_get(url, byte_range=None, tries=6):
+    """GET with a per-thread kept-alive connection (a new TLS connection per header read is ~2x slower).
+    Returns b"" for a range past the end of the file (HTTP 416), None for a missing file."""
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+    for attempt in range(1, tries + 1):
+        try:
+            r = _local.session.get(url, headers={"Range": f"bytes={byte_range[0]}-{byte_range[1]}"} if byte_range else {}, timeout=120)
+            if r.status_code == 404:
+                return None
+            if r.status_code == 416:
+                return b""
+            if r.status_code in (200, 206):
+                return r.content
+            err = f"HTTP {r.status_code}"
+        except Exception as e:  # noqa: BLE001 - network errors of every kind are retried
+            err = e
+            _local.session = requests.Session()
+        wait = min(10 * 2 ** (attempt - 1), 300)
+        print(f"  retry {attempt}/{tries} in {wait}s: {url.rsplit('/', 1)[-1]} {byte_range or ''}: {str(err)[:120]}", flush=True)
+        time.sleep(wait)
+    raise RuntimeError(f"{url}: {err}")
+
+
+def ncar_size(url):
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+    r = _local.session.head(url, timeout=60)
+    return int(r.headers["Content-Length"]) if r.status_code == 200 else None
+
+
+def find_boundary(url, offset, chunk=4_000_000):
+    """Offset of the first GRIB2 message starting at or after `offset` (checked: edition 2, and the message ends
+    in '7777' where its length says it does). None if none found in the chunk."""
+    data = ncar_get(url, (offset, offset + chunk - 1)) or b""
+    p = data.find(b"GRIB")
+    while p >= 0:
+        if p + 16 <= len(data) and data[p + 7] == 2:
+            total = struct.unpack(">Q", data[p + 8:p + 16])[0]
+            if 100 < total < 200_000_000:
+                end = data[p + total - 4:p + total] if p + total <= len(data) else ncar_get(url, (offset + p + total - 4, offset + p + total - 1))
+                if end == b"7777":
+                    return offset + p
+        p = data.find(b"GRIB", p + 1)
+    return None
+
+
+def ncar_url(run, fhour):
+    return f"{NCAR}/{run:%Y}/{run:%Y%m%d}/gfs.0p25.{run:%Y%m%d%H}.f{fhour:03d}.grib2"
+
+
+def describe_header(head):
+    """(discipline, category, number, template, surface type, scaled surface value) from a message's first bytes."""
+    discipline = head[6]
+    pos = 16
+    while pos + 5 <= len(head):
+        sec_len, sec_num = struct.unpack(">IB", head[pos:pos + 5])
+        if sec_num == 4:
+            sec = head[pos:pos + sec_len]
+            if len(sec) < 28:
+                return None
+            template = struct.unpack(">H", sec[7:9])[0]
+            return discipline, sec[9], sec[10], template, sec[22], struct.unpack(">I", sec[24:28])[0]
+        if sec_len == 0:
+            return None
+        pos += sec_len
+    return None
+
+
+def scan_ranges(url, max_messages=2000, start_fraction=0.6):
+    """Build {field: (start, end, text)} for FIELDS by walking the GRIB message headers with byte ranges,
+    starting from a message boundary near `start_fraction` of the file; from the start if that misses a field."""
+    size = ncar_size(url)
+    if size is None:
+        return None
+    start = find_boundary(url, int(size * start_fraction)) if start_fraction else 0
+    out = walk(url, start or 0, max_messages)
+    if len(out) < len(GRIB_CODES) and start:
+        out = walk(url, 0, max_messages)
+    return out
+
+
+def walk(url, offset, max_messages):
+    out = {}
+    for _ in range(max_messages):
+        head = ncar_get(url, (offset, offset + 511))
+        if head is None:
+            return {}
+        if len(head) < 16 or head[:4] != b"GRIB":
+            break
+        total = struct.unpack(">Q", head[8:16])[0]
+        d = describe_header(head)
+        if d:
+            for name, (disc, cat, num, surf, val, avg) in GRIB_CODES.items():
+                if name not in out and d[:3] == (disc, cat, num) and d[4] == surf and (val is None or d[5] == val) \
+                        and (not avg or d[3] == 8) and (avg or d[3] == 0):
+                    out[name] = (offset, offset + total - 1, f"GRIB {disc}/{cat}/{num} surface {surf}:{d[5]} template 4.{d[3]}")
+        if len(out) == len(GRIB_CODES):
+            break
+        offset += total
+    return out
+
+
+def fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE, source="aws"):
     out = out_dir / f"gfs_{run:%Y%m%d%H}_f{fhour:03d}.npz"
     if out.exists():
         return out, "kept"
-    url, idx = file_url(run, fhour)
-    if url is None:
-        return None, "missing"
-    ranges = byte_ranges(idx)
+    if source == "ncar":
+        url = ncar_url(run, fhour)
+        ranges = scan_ranges(url)
+        if ranges is None:
+            return None, "missing"
+    else:
+        url, idx = file_url(run, fhour)
+        if url is None:
+            return None, "missing"
+        ranges = byte_ranges(idx)
     lacking = set(FIELDS) - set(ranges)
     if lacking:
         raise RuntimeError(f"{url}: fields not in the index: {sorted(lacking)}")
@@ -157,7 +302,7 @@ def fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE):
     return out, "fetched"
 
 
-def combine(out_dir, year, out_nc):
+def combine(out_dir, year, out_nc, source_note=BUCKET, also_ne=None):
     files = sorted(out_dir.glob("gfs_??????????_f0??.npz"))  # all runs, incl. Dec 30-31 of the previous year (they cover Jan 1)
     if not files:
         raise SystemExit("Nothing to combine.")
@@ -176,9 +321,13 @@ def combine(out_dir, year, out_nc):
                     coords={"lat": first["lat"], "lon": first["lon"] - 360.0, "run_time": ("sample", run_time),
                             "lead_hours": ("sample", lead), "valid_time": ("sample", run_time + pd.to_timedelta(lead, unit="h"))})
     ds["SW_net_sfc"] = ds["DSWRF_sfc"] - ds["USWRF_sfc"]
-    ds.attrs["source"] = f"NOAA GFS 0.25 deg, {BUCKET}; fields: {dict(first['fields'].tolist())}"
+    ds.attrs["source"] = f"NOAA GFS 0.25 deg, {source_note}; fields: {dict(first['fields'].tolist())}"
     ds.to_netcdf(out_nc)
     print(f"Wrote {out_nc}: {ds.sizes['sample']} forecasts, lat {float(ds.lat.min())}..{float(ds.lat.max())}, lon {float(ds.lon.min())}..{float(ds.lon.max())}")
+    if also_ne is not None:
+        ne = ds.sel(lat=slice(LAT_RANGE[1], LAT_RANGE[0]), lon=slice(LON_RANGE[0] - 360.0, LON_RANGE[1] - 360.0))
+        ne.to_netcdf(also_ne)
+        print(f"Wrote {also_ne}: New England crop, {ne.sizes['lat']} x {ne.sizes['lon']}")
 
 
 def main() -> None:
@@ -192,6 +341,8 @@ def main() -> None:
                         help="Crop box in degrees (longitudes -180..180); default is the New England box. "
                              "Output then goes to gfs_<name>_YEAR.nc with --name")
     parser.add_argument("--name", default="ne", help="Label for the output files (default 'ne')")
+    parser.add_argument("--source", choices=["aws", "ncar"], default="aws", help="aws (2021 onward) or ncar (GDEX d084001, 2015 onward)")
+    parser.add_argument("--also-ne", action="store_true", help="Also write gfs_ne_YEAR.nc, cropped from the --box output")
     args = parser.parse_args()
     start = pd.Timestamp(args.start or f"{args.year - 1}-12-30")
     end = pd.Timestamp(args.end or f"{args.year}-12-31") + pd.Timedelta(hours=18)
@@ -206,7 +357,7 @@ def main() -> None:
     counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0}
     missing = []
     with ThreadPoolExecutor(args.workers) as pool:
-        futures = {pool.submit(fetch_one, r, f, raw_dir, lat_range, lon_range): (r, f) for r, f in jobs}
+        futures = {pool.submit(fetch_one, r, f, raw_dir, lat_range, lon_range, args.source): (r, f) for r, f in jobs}
         for i, fut in enumerate(as_completed(futures), 1):
             _, status = fut.result()
             counts[status] += 1
@@ -216,7 +367,8 @@ def main() -> None:
                 print(f"...{i}/{len(jobs)} ({counts})", flush=True)
     if missing:
         print(f"{len(missing)} forecast files missing from the archive or unreadable, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
-    combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}.nc")
+    combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}.nc", NCAR if args.source == "ncar" else BUCKET,
+            args.out_dir / f"gfs_ne_{args.year}.nc" if args.also_ne else None)
 
 
 if __name__ == "__main__":
