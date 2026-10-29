@@ -22,6 +22,17 @@ Two series, one raw JSON file per target day:
                                  the probe on --start shows whether it goes
                                  back that far.
 
+    system_load_hourly           /hourlysysload/day/{day}
+                                 hourly system load: Load, NativeLoad,
+                                 ArdDemand (no field documentation in the API).
+    system_load_5min             /fiveminutesystemload/day/{day}
+                                 five-minute system load: LoadMw, NativeLoad,
+                                 ArdDemand, SystemLoadBtmPv, NativeLoadBtmPv,
+                                 i.e. ISO-NE's "actual" and "actual including
+                                 estimated BTM solar" lines. Used to identify
+                                 which definition our zonal HourlyRtDemand.Load
+                                 sums to and which one the forecast targets.
+
 --series picks which to fetch (default: all three; files already
 downloaded are skipped, so re-running only fetches what is missing).
 
@@ -47,6 +58,8 @@ SERIES = {
     "reliability_region_forecast": ["reliabilityregionloadforecast/day/{day}/all", "reliabilityregionloadforecast/day/{day}"],
     "system_forecast": ["hourlyloadforecast/all/day/{day}", "hourlyloadforecast/day/{day}"],
     "estimated_zonal_load": ["fiveminuteestimatedzonalload/day/{day}"],
+    "system_load_hourly": ["hourlysysload/day/{day}"],
+    "system_load_5min": ["fiveminutesystemload/day/{day}"],
 }
 
 
@@ -82,7 +95,8 @@ def main() -> None:
     parser.add_argument("--end", default="2024-12-31")
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--sleep-seconds", type=float, default=1.5)
-    parser.add_argument("--series", nargs="+", default=list(SERIES), choices=list(SERIES))
+    parser.add_argument("--series", nargs="+", default=["reliability_region_forecast", "system_forecast", "estimated_zonal_load"],
+                        choices=list(SERIES))
     parser.add_argument("--find-history", action="store_true",
                         help="Only report the first day (between --start and --end) each series has data for, then exit")
     args = parser.parse_args()
