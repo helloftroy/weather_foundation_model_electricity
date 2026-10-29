@@ -1741,6 +1741,11 @@ plausible explanations, not tested.
 
 ## Demand against ISO-NE's own forecast (2026-10-27)
 
+> **Superseded (2026-10-29):** see "ISO-NE benchmark on matching
+> definitions" below. The forecast targets system NativeLoad; this zonal
+> comparison uses a different target, and its "combining beats ISO-NE"
+> result is retracted.
+
 **Data.** ISO-NE Three-Day Reliability Region Demand Forecast, every
 published version, 2021-2024 (Web Services `/reliabilityregionloadforecast/
 day/{day}/all`), plus the system-wide hourly forecast (`/hourlyloadforecast/
@@ -1861,6 +1866,115 @@ bias-corrected ISO-NE forecast (earlier demand predictions, same hours):
 | ISO-NE as a feature + old weather + GFS + decoder | 1.94 | 1.81 | | |
 | ISO-NE as a feature + old weather + GFS + tokens | 1.91 | 1.91 | | |
 | ISO-NE as a feature + actual weather | 1.94 | 1.80 | | |
+
+## ISO-NE benchmark on matching definitions: system NativeLoad (2026-10-29)
+
+**Supersedes the zonal ISO-NE comparison above as the primary benchmark.**
+That comparison scored ISO-NE's forecast against our zonal target, which
+is defined differently, and needed an empirical correction; here both are
+scored on the quantity ISO-NE actually forecasts.
+
+### What each series is
+
+Data: ISO-NE Web Services `/hourlysysload/day/{day}` (hourly system load,
+2021-2024; history starts 2019-05-31) and `/fiveminutesystemload/day/{day}`
+(history starts 2024-05-31, so June-December 2024), packed to
+`data/isone_forecast/isone_system_load_hourly.parquet` and
+`isone_system_load_5min.parquet`. The API documents field names only, not
+meanings ("no documentation provided" for every field, including
+HourlyRtDemand.Load).
+
+- Hourly system `Load` = `NativeLoad` + `ArdDemand` exactly (ARD: asset
+  related demand, e.g. pumped storage and battery charging).
+- The five-minute series averaged to hours reproduces the hourly one
+  (`LoadMw` = `Load` exactly; `NativeLoad` within 2 MW). It adds
+  `NativeLoadBtmPv` / `SystemLoadBtmPv`: ISO-NE's "actual including
+  estimated BTM solar". Implied BTM solar (`NativeLoadBtmPv - NativeLoad`),
+  Jun-Dec 2024 mean by local hour: 0 at night, 1,430 MW at 08, 3,083 at 10,
+  3,545 at 12, 2,811 at 14, 1,395 at 16, 285 at 18.
+
+**ISO-NE's prior-day system forecast targets `NativeLoad`.** 2021-2024,
+forecast minus actual:
+
+| Actual series | mean (MW) | midday 10-14 | night 00-04 | MAPE |
+|---|---|---|---|---|
+| NativeLoad | +36 | +56 | +7 | **2.13%** |
+| Load (= NativeLoad + ARD) | -171 | -112 | -567 | 3.10% |
+| our zonal sum (HourlyRtDemand.Load) | -184 | -838 | +96 | 3.23% |
+
+Jun-Dec 2024 also: against `NativeLoadBtmPv` -1,071 MW mean, -3,285 MW at
+midday (MAPE 7.58%); against `SystemLoadBtmPv` -3,486 at midday. Midday
+forecast minus NativeLoad by year: +46, +98, +96, -18 MW (no trend). By
+hour it stays within about -20 to +140 MW all day.
+
+**Our target (sum of zonal HourlyRtDemand.Load) is neither.** It excludes
+ARD (night: -88 MW vs NativeLoad, -663 vs Load) and exceeds NativeLoad at
+midday by a solar-shaped amount that grows each year (local noon: +705 MW
+2021, +905 2022, +1,066 2023, +1,184 2024; night about -60 to -140).
+Jun-Dec 2024: zonal sum - NativeLoad = 0.41 x (BTM solar estimate) - 176
+MW, correlation 0.988; median ratio to BTM solar in daylight 0.34. So our
+zonal target behaves like native load plus the output of roughly 35-40% of
+the solar ISO-NE treats as behind-the-meter in operations. Most likely
+these are settlement-only resources, which ISO-NE counts as BTM in
+operations but not in market settlement (ISO-NE explainer, August 2024);
+this attribution is inferred, not documented.
+
+Consequence: zonal ISO-NE region forecasts are presumably also on the
+native-load basis, but zonal native-load actuals are only available from
+2025-01-29 (Estimated Zonal Load), so the zonal comparison cannot be made
+definition-matched for 2023-2024. The benchmark is therefore system level.
+
+### Benchmark: system NativeLoad, 24 h ahead
+
+Our models retrained with NativeLoad as the target (system level; weather
+blocks weighted by zone demand share; tokens = box mean, 50 PCs; no lagged
+load). ISO-NE's prior-day forecast (latest version issued the day before,
+before 10:00 ET) scored as published, no correction. MAPE (%); Δ vs ISO-NE
+published, 95% week-block bootstrap. Script: `local/
+system_native_load_benchmark.py`; outputs `results/system_native_load/`.
+
+| Forecast | MAPE 2023 / 2024 | Δ 2023 | Δ 2024 | cold snap 2023 / 2024 | heat wave | top 5% |
+|---|---|---|---|---|---|---|
+| **ISO-NE, published** | **2.29 / 2.23** | | | 3.08 / 2.02 | 1.91 / 2.68 | 2.80 / 2.65 |
+| ours: old weather | 7.18 / 7.17 | +4.89 | +4.94 | 10.65 / 7.96 | 11.98 / 6.94 | 7.82 / 7.31 |
+| ours: + GFS | 4.21 / 4.24 | +1.91 [+1.59, +2.26] | +2.01 [+1.72, +2.31] | 6.05 / 5.17 | 3.77 / 3.69 | 4.06 / 3.97 |
+| ours: + decoder | 4.23 / 4.34 | +1.94 | +2.11 | 5.83 / 5.35 | 4.23 / 4.31 | 4.05 / 4.54 |
+| ours: + tokens | 5.57 / 5.75 | +3.28 | +3.51 | 6.83 / 6.63 | 7.93 / 4.98 | 5.52 / 5.59 |
+| ours: + GFS + decoder | 4.03 / 4.05 | +1.74 [+1.43, +2.08] | +1.82 [+1.52, +2.11] | 5.32 / 4.98 | 3.76 / 3.94 | 3.96 / 3.78 |
+| ours: + GFS + tokens | 4.36 / 4.22 | +2.07 | +1.99 | 6.30 / 5.08 | 3.84 / 3.69 | 3.69 / 3.73 |
+| ours: + actual weather (ceiling) | 4.30 / 4.15 | +2.01 | +1.92 | 5.78 / 4.70 | 3.56 / 3.47 | 3.74 / 3.85 |
+| ISO-NE as a feature (calendar only) | 2.55 / 2.48 | +0.26 | +0.25 | | | |
+| ISO-NE + old weather | 2.44 / 2.40 | +0.15 | +0.16 | | | |
+| ISO-NE + old weather + GFS | 2.35 / 2.27 | +0.05 [-0.03, +0.14] | +0.04 [-0.04, +0.11] | 3.12 / 1.86 | 2.20 / 2.70 | 2.84 / 2.92 |
+| ISO-NE + old weather + decoder | 2.34 / 2.29 | +0.05 | +0.06 | 3.05 / 1.85 | 2.25 / 2.96 | 2.88 / 3.26 |
+| ISO-NE + old weather + tokens | 2.35 / 2.31 | +0.06 | +0.07 | 2.99 / 2.08 | 2.88 / 2.58 | 2.98 / 2.88 |
+| ISO-NE + GFS + decoder | 2.32 / 2.22 | +0.03 [-0.04, +0.11] | -0.01 [-0.09, +0.07] | 3.07 / 1.84 | 2.13 / 2.71 | 2.85 / 2.86 |
+| ISO-NE + GFS + tokens | 2.32 / 2.27 | +0.02 | +0.04 | 3.08 / 2.04 | 2.36 / 2.52 | 2.81 / 2.82 |
+| ISO-NE + actual weather | 2.30 / 2.26 | +0.01 | +0.02 | 3.02 / 1.83 | 2.08 / 2.78 | 2.78 / 3.09 |
+
+- **ISO-NE's forecast is far better than ours on its own target:** 2.2-2.3%
+  against 4.0-4.1% for our best model (GFS + decoder), a gap of about 1.8
+  points, much larger than the 0.4-0.7 points of the corrected zonal
+  comparison. Even our actual-weather ceiling (4.2-4.3%) is far behind:
+  the gap is not weather information but everything else ISO-NE uses
+  (recent load, solar modelling, operator knowledge; we use no lagged
+  load).
+- **Nothing we add improves on ISO-NE's forecast:** with ISO-NE as a
+  feature, adding old weather, GFS, the decoder, tokens or even actual
+  weather gives -0.01 to +0.07 points, never significant. ISO-NE's
+  forecast already contains the weather information.
+- **Retraction:** the earlier finding that "ISO-NE + our weather beats
+  ISO-NE by 8-14%" (zonal section above) does not hold on matching
+  definitions. It came from the definition mismatch: with GFS solar and
+  calendar features the model learned the solar-shaped difference between
+  ISO-NE's native-load forecast and our zonal target, not better demand
+  forecasting.
+- NativeLoad is harder for our models than the zonal target (4.0% vs
+  about 3.0% system-wide), as expected: it is net of all ~3.5 GW of
+  midday BTM solar, so it depends more on solar, where our GFS shortwave
+  feature is mis-timed (see the GFS shortwave section).
+- Caveats: one seed; ISO-NE's prior-day version has a 15-38 h lead (ours
+  24 h); hard-day counts are small (2023: 4 cold-snap days).
 
 ## Regional weather beyond New England (2026-10-28)
 
@@ -2059,9 +2173,14 @@ trained on 2021-23), CatBoost with one seed.
   decoder are roughly equal, GFS + decoder is our best (4.44 / 4.64% zonal
   MAPE), at the actual-weather ceiling. Tokens alone are much worse; they
   add nothing on top. Regional weather beyond New England does not help.
-  ISO-NE's own forecast, bias-corrected for a solar-shaped definition gap,
-  beats ours by 0.5-0.7 points; ISO-NE's forecast plus GFS beats ISO-NE by
-  8-14%, and Prithvi adds nothing to that. The worst days are holidays,
+  ISO-NE's own forecast, scored on its own target (system NativeLoad,
+  identified from ISO-NE's system load data; no correction needed), is
+  2.2-2.3% MAPE against 4.0-4.1% for our best model retrained on that
+  target; adding our weather, GFS or Prithvi to ISO-NE's forecast does not
+  improve it. (An earlier zonal comparison suggesting ISO-NE + GFS beats
+  ISO-NE by 8-14% was an artifact of mismatched definitions; retracted.)
+  Our zonal target behaves like native load plus about 40% of ISO-NE's
+  behind-the-meter solar estimate. The worst days are holidays,
   bridge days and events, not weather days.
 - **Price.** A forecast matters more than actual weather (day-ahead prices
   are set on forecasts). The Prithvi tokens add about 10% on top of GFS
