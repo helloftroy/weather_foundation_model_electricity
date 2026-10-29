@@ -2175,6 +2175,20 @@ Real minus placebo:
   month-scale part cannot be separated here from other slowly varying
   state the tokens encode.
 
+Figure: `results/figures/price_token_placebo.png/.pdf` (`local/
+plot_placebo.py`). Caption (for the paper): Change in day-ahead price MAE
+from adding Prithvi encoder tokens with correct and deliberately wrong
+timing. Panels: test years 2023 (top) and 2024 (bottom), tokens added to
+old weather + GFS (left) or to old weather + GFS + regional GFS (right).
+Real: tokens issued for the target time (blue). Shuffled: tokens
+permuted within the same calendar month and 3-hour time of day (three
+seeds in light grey, their mean and range in dark grey). Shifted: tokens
+from the same time a week earlier or later. Bars are 95% week-block
+bootstrap intervals; negative means the tokens reduce error. All models
+are retrained with the given tokens and also use calendar features, past
+prices and the Henry Hub price. In 2024 over GFS + regional, shuffling
+removes 60-68% of the real-token gain.
+
 ## Decoder check on all variables, and a GFS shortwave problem (2026-10-29)
 
 **Decoder.** 24 h ahead over the zone areas, against MERRA-2 at the target
