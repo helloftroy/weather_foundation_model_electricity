@@ -1950,6 +1950,49 @@ Script: `local/gfs_demand_benchmark.py --hard-days --regional
 - As expected: demand is local; price depends on the wider gas and
   electricity system.
 
+## Decoder check on all variables, and a GFS shortwave problem (2026-10-29)
+
+**Decoder.** 24 h ahead over the zone areas, against MERRA-2 at the target
+time (all 8 zones, 3-hourly; n about 23,000 per year). RMSE; skill = 1 -
+MSE / MSE of Prithvi's own climatology input for the target time.
+
+| Variable | decoder 2021 / 2023 / 2024 | GFS | persistence (24 h) | climatology | decoder skill | GFS skill | decoder corr |
+|---|---|---|---|---|---|---|---|
+| T2M (K) | 0.84 / 0.86 / 0.86 | 1.04 / 1.02 / 1.00 | 3.13 / 3.14 / 2.79 | 3.37 / 3.45 / 3.24 | 0.93-0.94 | 0.90-0.91 | 0.996 |
+| QV2M | | | | | 0.94-0.95 | 0.73-0.81 | 0.995 |
+| U10M (m/s) | 1.01 / 0.98 / 0.94 | 0.88 / 0.88 / 0.87 | 3.15 / 3.21 / 3.16 | 2.68 / 2.60 / 2.72 | 0.86-0.88 | 0.89-0.90 | 0.93-0.94 |
+| V10M (m/s) | 0.98 / 0.98 / 0.96 | 0.76 / 0.79 / 0.75 | 3.38 / 3.49 / 3.40 | 2.66 / 2.70 / 2.76 | 0.86-0.88 | 0.92-0.93 | 0.94-0.95 |
+| SWGNT (W/m2) | 37 / 38 / 37 | 135 / 135 / 136 | 93 / 94 / 92 | 73 / 76 / 72 | 0.74-0.76 | (see below) | 0.986 |
+| wind speed (m/s) | 0.93 / 0.94 / 0.91 | 0.91 / 0.91 / 0.91 | 2.24 / 2.08 / 2.13 | 2.89 / 2.73 / 2.87 | 0.88-0.90 | 0.89-0.90 | 0.91-0.92 |
+
+The decoder works as intended on every variable: far better than
+persistence and climatology, unbiased (T2M bias -0.1 to -0.35 K; wind
+speed -0.4 m/s), correlation 0.91-0.996. GFS is better on the wind
+components; the decoder on temperature and humidity (with the usual caveat
+that MERRA-2 is Prithvi's own initial data). The earlier decoder problems
+(regional crop, scrambled mask-unit order; see the top of this file) were
+fixed before all 2021-2024 runs.
+
+**GFS shortwave is a time average ending at T, not a value at T.** GFS
+stores shortwave as averages from the last 6-hourly reset: forecast hour 24
+is the 6 h mean over T-6 to T, hour 27 the 3 h mean over T-3 to T. Our
+targets alternate between the two (half each: 00/06/12/18 UTC use hour 24,
+03/09/15/21 UTC use hour 27). Against MERRA-2 at the zone cells (2023):
+
+| GFS lead | vs MERRA-2 at T | vs mean(T-3, T) | vs trapezoid T-6..T |
+|---|---|---|---|
+| 24 (6 h mean) | RMSE 152, corr 0.735 | 96, 0.887 | **63, 0.947** |
+| 27 (3 h mean) | RMSE 131, corr 0.807 | **72, 0.934** | 102, 0.862 |
+
+So the GFS shortwave feature is lagged by 1.5-3 h and mixes two averaging
+windows; CatBoost knows the hour, which partly compensates, but the GFS
+block is handicapped on solar, and the decoder's shortwave (aligned with
+MERRA-2 at T) is not. This could account for some of the "decoder (or
+tokens) on top of GFS" gains, especially for midday demand. Fix options:
+download hour 21 as well and recover the 3 h mean ending at T for hour 24
+(avg 21-24 = 2 x avg 18-24 - avg 18-21); or test GFS without shortwave,
+and GFS with the decoder's shortwave only.
+
 ## Summary of findings so far (2026-10-29)
 
 All 24 h ahead, year-ahead folds (test 2023 trained on 2021-22, test 2024
@@ -1988,5 +2031,8 @@ Open:
 - A bridge-day / holiday-adjacent calendar feature for demand.
 - Fair initialisation: run Prithvi from an operational analysis (GEOS-FP)
   rather than MERRA-2 reanalysis (noted, deferred).
+- GFS shortwave: fix the averaging-window problem (download forecast hour
+  21) and rerun the GFS comparisons; first a quick test of how much of
+  the decoder / token gain is shortwave.
 - Optionally, a longer record (more test years) to firm up hard-day
   results, which rest on few days (2023 has 4 cold-snap days).
