@@ -36,8 +36,9 @@ files already downloaded, waits out rate limits, stops after 5 failures in a
 row (re-run to resume).
 """
 import argparse
+import json
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from download_isone_demand import BASE_URL, daterange, fetch, session_from_env
@@ -49,6 +50,32 @@ SERIES = {
 }
 
 
+def has_records(text: str) -> bool:
+    """False for ISO-NE's 'no data' reply, e.g. {"isone_web_services":{}} with HTTP 200."""
+    try:
+        doc = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    outer = next(iter(doc.values()), None) if isinstance(doc, dict) else None
+    return bool(outer) and any(bool(v) for v in outer.values())
+
+
+def first_day_with_data(session, pattern, start, end):
+    """Binary search for the first day that returns records, assuming history is a contiguous recent window."""
+    lo, hi = start, end
+    if not has_records(fetch(session, f"{BASE_URL}/{pattern.format(day=hi.strftime('%Y%m%d'))}.json")[2].text):
+        return None
+    while lo < hi:
+        mid = lo + (hi - lo) // 2
+        ok, _, resp = fetch(session, f"{BASE_URL}/{pattern.format(day=mid.strftime('%Y%m%d'))}.json")
+        if ok and has_records(resp.text):
+            hi = mid
+        else:
+            lo = mid + timedelta(days=1)
+        time.sleep(1)
+    return lo
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", default="2021-01-01")
@@ -56,6 +83,8 @@ def main() -> None:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--sleep-seconds", type=float, default=1.5)
     parser.add_argument("--series", nargs="+", default=list(SERIES), choices=list(SERIES))
+    parser.add_argument("--find-history", action="store_true",
+                        help="Only report the first day (between --start and --end) each series has data for, then exit")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     session = session_from_env()
@@ -89,7 +118,11 @@ def main() -> None:
                   + (" (so the API's history does not reach the start date; try a later --start)" if ok else "") + "; skipping this series.")
             continue
         (raw_dir / "URL_FORM.txt").write_text(pattern + "\n")
-        n_new = n_failed = consecutive = 0
+        if args.find_history:
+            first = first_day_with_data(session, pattern, start, end)
+            print(f"{series}: first day with data between {start} and {end}: {first}", flush=True)
+            continue
+        n_new = n_failed = n_empty = consecutive = 0
         for day in daterange(start, end):
             day_str = day.strftime("%Y%m%d")
             out = raw_dir / f"{day_str}.json"
@@ -105,6 +138,12 @@ def main() -> None:
                 time.sleep(args.sleep_seconds * 4)
                 continue
             consecutive = 0
+            if not has_records(resp.text):   # "no data" reply: record nothing, so a later run can retry
+                n_empty += 1
+                if n_empty in (1, 10, 100) or n_empty % 500 == 0:
+                    print(f"  {series} {day_str}: no data (empty reply; {n_empty} so far)", flush=True)
+                time.sleep(args.sleep_seconds)
+                continue
             tmp = out.with_suffix(".part")
             tmp.write_text(resp.text)
             tmp.rename(out)
@@ -112,7 +151,7 @@ def main() -> None:
             if n_new % 100 == 0:
                 print(f"  {series}: {n_new} new days (latest {day_str})", flush=True)
             time.sleep(args.sleep_seconds)
-        print(f"{series}: {n_new} new days, {n_failed} failed; files in {raw_dir}", flush=True)
+        print(f"{series}: {n_new} new days, {n_failed} failed, {n_empty} with no data; files in {raw_dir}", flush=True)
 
 
 if __name__ == "__main__":
