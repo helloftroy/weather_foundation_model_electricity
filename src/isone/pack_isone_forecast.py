@@ -4,9 +4,10 @@ files need copying.
 
     python src/isone/pack_isone_forecast.py --raw-dir data/isone_forecast/raw --out-dir data/isone_forecast
 
-Output columns: target_utc (start of the forecast hour), creation_utc (when
-that version was issued), every other field of the record as given
-(LoadMw, ReliabilityRegion, ReliabilityRegionLoadPercentage, NetLoadMw, ...).
+Output columns: target_utc (start of the forecast hour, or the sample time
+for actuals), creation_utc (when that version was issued; forecasts only),
+every other field of the record as given, nested fields flattened (LoadMw,
+ReliabilityRegion, ReliabilityRegionLoadPercentage, NetLoadMw, ...).
 Writes isone_<series>.parquet; checks every input file parsed.
 """
 import argparse
@@ -35,11 +36,14 @@ def pack(series_dir: Path, out_dir: Path) -> None:
         r = records(f)
         empty += not r
         rows.extend(r)
-    df = pd.DataFrame(rows)
+    df = pd.json_normalize(rows)                # nested fields (e.g. Location.$) become their own columns
     df["target_utc"] = pd.to_datetime(df.pop("BeginDate"), utc=True)
-    df["creation_utc"] = pd.to_datetime(df.pop("CreationDate"), utc=True)
-    df = df[["target_utc", "creation_utc"] + [c for c in df.columns if c not in ("target_utc", "creation_utc")]]
-    df = df.sort_values(list(df.columns[:2])).reset_index(drop=True)
+    first = ["target_utc"]
+    if "CreationDate" in df:                    # forecasts have versions; actuals do not
+        df["creation_utc"] = pd.to_datetime(df.pop("CreationDate"), utc=True)
+        first.append("creation_utc")
+    df = df[first + [c for c in df.columns if c not in first]]
+    df = df.sort_values(first).reset_index(drop=True)
     out = out_dir / f"isone_{series_dir.name}.parquet"
     df.to_parquet(out, index=False)
     print(f"{series_dir.name}: {len(files)} files ({empty} empty), {len(df)} rows, "
