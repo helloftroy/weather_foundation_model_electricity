@@ -2410,6 +2410,47 @@ linear function of the pooled input state, PC23 and PC19 much less so
 "southerly flow" for price likely differs between winter and summer (not
 yet split). Amplitudes are modest (0.1-0.9 sigma).
 
+## DART spread: real-time minus day-ahead hub LMP (2026-10-30)
+
+Target: hourly DART = real-time hub LMP - day-ahead hub LMP (both in
+`data/compact/isone_*_hourly_lmp_YEAR.parquet`, same parser, UTC hour
+beginning, location 4000 `.H.INTERNAL_HUB`). Prediction made after the
+day-ahead price is published (about 13:30 ET on D-1) and before the
+real-time hour: the day-ahead price for the hour is a feature; weather,
+GFS and tokens keep their 24 h-ahead alignment (known by then, so
+conservatively stale); spread lags 25 h, 48 h, 7 d and the 24 h mean
+ending 25 h earlier (the latest real-time hour surely known); Henry Hub
+D-1. Same folds and CatBoost (squared-error loss) as the price runs.
+Script: `local/price_benchmark.py --targets lmp --gas-features henryhub
+--dart`; outputs `results/dart/` (log `results/dart.log`).
+
+Spread: mean -1.2 / -2.0 $/MWh, median -2.6 / -2.0, sd 24 / 32, 1-99%
+-52..+76 / -75..+54 (2023 / 2024); 3% of hours beyond +/-50.
+
+| model | MAE 2023 / 2024 | median abs error | R² |
+|---|---|---|---|
+| zero spread (real time = day ahead) | **10.66 / 10.57** | 5.62 / 5.23 | 0.00 / 0.00 |
+| calendar + spread lags + Henry Hub + DA price | 14.10 / 12.99 | 7.94 / 7.26 | -0.33 / -0.12 |
+| + weather at issue | 12.69 / 13.43 | 6.83 / 6.81 | -0.14 / -0.16 |
+| + GFS | 11.97 / 12.24 | 6.37 / 6.47 | -0.10 / -0.09 |
+| + tokens | 11.42 / 10.92 | 6.69 / 5.68 | -0.00 / 0.00 |
+| + GFS + tokens | 11.42 / 10.98 | 6.62 / 5.65 | -0.01 / 0.01 |
+
+Paired Δ MAE (95% week bootstrap): GFS + tokens vs GFS -0.54 [-1.36,
++0.12] / -1.26 [-2.17, -0.53]; GFS vs zero spread +1.31 [+0.62, +2.12] /
++1.67 [+0.87, +2.55]; GFS + tokens vs zero spread +0.77 [+0.48, +1.04] /
++0.41 [-0.11, +0.93]. Sign right (hours with |spread| > $5): 52% / 59%
+with tokens, 55% / 55% with GFS only.
+
+Reading: no model beats "real time = day ahead"; R² is at or below zero
+throughout (the spread is centred near zero with heavy tails, so R² is
+poorly behaved, and here every model is worse than the test mean). The
+day-ahead market already prices in the information these features carry
+(and newer forecasts than ours). Tokens make the model less wrong than
+GFS (significant in 2024) but do not reach the zero-spread reference.
+Possible follow-up: a median (MAE) loss instead of squared error, since
+the evaluation is MAE and the spread median is about -2.
+
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
 Goal: a third rolling-origin test year, to see whether the 2023-2024 token
@@ -2517,6 +2558,15 @@ Done since this list was first written: 2021-2024 with year-ahead folds;
 the lead-24 forecast test against GFS; readout and component checks.
 
 Open:
+- Longer leads (1, 3, 5, 7 days ahead) for ISO-NE price: code ready
+  (`price_benchmark.py --lead-days L`, lead-24 tokens from the issue
+  time); waiting for GFS f072/f120/f168 (06_download_gfs.sbatch with
+  FHOURS).
+- ERCOT replication (six hubs, DAM prices 2020-2024 already in
+  `data/compact/ercot_dam_spp_YEAR.parquet`): code ready
+  (`local/ercot_price_benchmark.py`); waiting for the Texas Prithvi run
+  (REGION=ercot) and Texas GFS. Decide Uri handling: run with and
+  without `--exclude-uri`.
 - Upper-air control for price: done (2026-10-30, pooled input fields,
   all 160 channels). Remaining: whether the input-state gain survives
   with an operational analysis (GEOS-FP) instead of MERRA-2.
