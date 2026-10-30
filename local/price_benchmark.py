@@ -164,7 +164,14 @@ def main() -> None:
                              "model retrained: shifted +7 / -7 days, and shuffled within the same calendar month and the "
                              "same 3-hour time of day (3 seeds), which keeps season and time of day but not the day's "
                              "weather. Compared with the real tokens, on top of GFS and of GFS + GFS regional")
+    parser.add_argument("--pooled-extents", action="store_true",
+                        help="Wider context: final-layer tokens averaged over larger extents (New England, Northeast, the "
+                             "wide box 32-50N 90-64W, and the five outside regions together), and the upper-air control "
+                             "(Prithvi's own 160 input fields, and its decoder output, averaged over New England and the "
+                             "wide box), each 50 PCs fitted on training times; on top of GFS and of GFS + GFS regional")
     args = parser.parse_args()
+    if args.pooled_extents:
+        args.regional = True
     if args.placebo:
         args.regional = True
     if args.pc_sweep is not None:
@@ -211,6 +218,22 @@ def main() -> None:
         if args.regional:
             year_blocks["GFS regional"] = gfs_regional(args.data_dir / "gfs" / f"gfs_wide_{y}.nc", t)
             year_blocks.update(prithvi_regional(args.prithvi_dir, y, t, weather))
+        if args.pooled_extents:
+            stem = args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24"
+            ext = list(meta["pooled"]["extents"])
+            pooled = {kind: np.load(f"{stem}_pooled_{kind}.npy", mmap_mode="r") for kind in ("tokens", "inputs", "recon")}
+            def at_targets(a):  # noqa: E306  [issue, ...] -> [target, features], NaN where no sample
+                a = np.asarray(a, np.float32).reshape(len(a), -1)
+                out = np.full((len(t), a.shape[1]), np.nan, np.float32)
+                out[pos >= 0] = a[pos[pos >= 0]]
+                return out
+            for e in ("ne", "northeast", "wide"):
+                year_blocks[f"tokens {e} (raw)"] = at_targets(pooled["tokens"][:, ext.index(e)])
+            regions = [ext.index(e) for e in ("NY-PA", "MidAtlantic", "GreatLakes", "Southeast", "Quebec-Mar")]
+            year_blocks["tokens 5 regions (raw)"] = at_targets(pooled["tokens"][:, regions])
+            for e in ("ne", "wide"):
+                year_blocks[f"MERRA-2 fields {e} (raw)"] = at_targets(pooled["inputs"][:, ext.index(e)])
+                year_blocks[f"decoder fields {e} (raw)"] = at_targets(pooled["recon"][:, ext.index(e)])
         token_paths.append((args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.npy", pos))
         if args.input_control:
             inp = box_pixels(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24_inputs.npy")
@@ -291,6 +314,13 @@ def main() -> None:
         wi, G, R = "weather (issue)", "GFS area", "GFS regional"
         placebos = ["Prithvi tokens", "tokens placebo shift +7d", "tokens placebo shift -7d"] + [f"tokens placebo shuffle s{k}" for k in range(3)]
         combos = [[wi, G], [wi, G, R]] + [[wi, G, v] for v in placebos] + [[wi, G, R, v] for v in placebos]
+    if args.pooled_extents:
+        wi, G, R = "weather (issue)", "GFS area", "GFS regional"
+        extra = ["tokens ne", "tokens northeast", "tokens wide", "tokens 5 regions",
+                 "MERRA-2 fields ne", "MERRA-2 fields wide", "decoder fields ne", "decoder fields wide"]
+        extra = [[v] for v in extra] + [["MERRA-2 fields ne", "tokens ne"], ["MERRA-2 fields wide", "tokens wide"],
+                                        ["MERRA-2 fields wide", "tokens ne"]]
+        combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -320,6 +350,10 @@ def main() -> None:
             blocks["tokens pooled full"] = sys_blocks["Prithvi tokens (raw)"]
             for k, v in spatial_tokens(token_paths, train_times, (10, 25)).items():
                 blocks[f"tokens spatial k{k}"] = v
+        if args.pooled_extents:
+            for k in [k for k in sys_blocks if k.endswith(" (raw)") and k not in ("Prithvi tokens (raw)", "MERRA-2 fields (raw)")]:
+                blocks[k[:-6]], frac = pca(sys_blocks[k], train_times, 50)
+                print(f"  {k[:-6]}: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
         if args.input_control:
             blocks["MERRA-2 fields"] = pca(sys_blocks["MERRA-2 fields (raw)"], train_times, 50)[0]
         hard = hard_day_labels(df["timestamp_local"], t2m_true, tr)

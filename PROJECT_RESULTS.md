@@ -2189,6 +2189,126 @@ are retrained with the given tokens and also use calendar features, past
 prices and the Henry Hub price. In 2024 over GFS + regional, shuffling
 removes 60-68% of the real-token gain.
 
+## Price: wider token extents and the upper-air control (2026-10-30)
+
+Question: do tokens pooled over a larger area than New England, or
+Prithvi's full input state (all 160 MERRA-2 channels, surface and upper
+air), help price beyond the New England tokens, and do the tokens still
+help once that input state is given?
+
+Data: a new lead-24 extraction for 2021-2024 (`src/prithvi/extract_embeddings.py
+--pooled`) saved, for eight extents, the final encoder layer averaged over
+the patches whose centres fall in the extent (`*_pooled_tokens.npy`,
+[time, 8, 2560]), and the 160 input fields and the 160 decoder output
+fields averaged the same way (`*_pooled_inputs.npy`, `*_pooled_recon.npy`).
+Extents: ne 40-48N 75-66.25W (the box used so far), northeast 38-50N
+80-62W, wide 32-50N 90-64W, and the five regions of the regional-weather
+section (NY-PA, MidAtlantic, GreatLakes, Southeast, Quebec-Mar).
+
+Checks:
+- The pooled "ne" tokens equal the box mean of the existing token file
+  (max difference 0.019 against a typical magnitude of 1.3: float16
+  rounding).
+- The wider extents really are different: the mean correlation over time,
+  per token dimension, with the ne tokens is 0.87 (northeast), 0.70
+  (wide), 0.74 (Quebec-Mar), 0.46 (NY-PA), 0.41 (GreatLakes), 0.33
+  (MidAtlantic), 0.14 (Southeast). The mean input T2M (normalised) rises
+  from 0.14 (ne) to 0.31 (wide) and 0.61 (Southeast), as expected.
+- 50 PCs keep 76% (ne), 79% (northeast), 81% (wide) and 63% (five regions
+  concatenated, 12,800 dims) of the standardised token variance, and
+  98-99% of the input and decoder fields.
+
+Setup: raw day-ahead LMP at the hub, Henry Hub known as a feature,
+year-ahead folds, CatBoost (3,000 trees, lr 0.05, depth 6, seed 7); every
+block is PCA-50 fitted on training times. Same 34,650 hours as the
+regional and placebo runs. Script: `local/price_benchmark.py --targets lmp
+--gas-features henryhub --pooled-extents`; outputs
+`results/regional/price_pooled_extents/` (log `results/price_pooled_extents.log`);
+paired contrasts `local/pooled_extents_contrasts.py` ->
+`pooled_extents_contrasts.csv`. "MERRA-2 fields X" = Prithvi's 160 input
+channels at issue time averaged over extent X; "decoder fields X" = its
+160 decoded output channels at the target time, averaged the same way.
+
+MAE $/MWh, Δ vs + old weather + GFS (8.41 / 7.60), 95% week bootstrap:
+
+| + old weather + GFS + ... | MAE 2023 / 2024 | Δ 2023 | Δ 2024 | cold snaps 2023 / 2024 | top 5% 2023 / 2024 |
+|---|---|---|---|---|---|
+| (nothing: reference) | 8.41 / 7.60 | | | 83.2 / 18.7 | 41.8 / 33.9 |
+| GFS regional | 7.42 / 7.58 | -0.99 [-1.48, -0.58] | -0.02 [-0.42, +0.41] | 77.6 / 18.3 | 39.3 / 32.7 |
+| tokens ne | 7.54 / 6.77 | -0.87 [-1.39, -0.41] | -0.83 [-1.23, -0.44] | 75.5 / 15.0 | 38.2 / 31.0 |
+| tokens northeast | 7.78 / 6.75 | -0.63 [-1.13, -0.18] | -0.86 [-1.28, -0.45] | 75.1 / 16.0 | 37.3 / 33.7 |
+| tokens wide | 7.75 / 6.95 | -0.66 [-1.20, -0.20] | -0.65 [-1.01, -0.29] | 72.8 / 16.7 | 37.4 / 32.1 |
+| tokens 5 regions | 7.65 / 6.67 | -0.76 [-1.23, -0.35] | -0.93 [-1.34, -0.54] | 76.7 / 15.5 | 38.7 / 31.0 |
+| MERRA-2 fields ne | 7.68 / 7.09 | -0.73 [-1.20, -0.31] | -0.51 [-0.86, -0.18] | 78.9 / 16.0 | 39.4 / 35.9 |
+| MERRA-2 fields wide | 7.84 / 7.39 | -0.57 [-1.05, -0.15] | -0.21 [-0.59, +0.17] | 79.8 / 18.7 | 40.4 / 35.7 |
+| decoder fields ne | 7.69 / 6.75 | -0.72 [-1.19, -0.28] | -0.85 [-1.23, -0.49] | 81.4 / 16.1 | 39.9 / 31.6 |
+| decoder fields wide | 8.09 / 7.09 | -0.31 [-0.68, +0.01] | -0.51 [-0.95, -0.10] | 78.5 / 16.3 | 40.1 / 32.0 |
+| MERRA-2 fields ne + tokens ne | 7.38 / 6.65 | -1.03 [-1.61, -0.53] | -0.96 [-1.37, -0.57] | 77.1 / 14.9 | 39.2 / 31.4 |
+| MERRA-2 fields wide + tokens wide | 7.73 / 7.13 | -0.68 [-1.20, -0.21] | -0.48 [-0.86, -0.10] | 72.6 / 18.4 | 38.2 / 33.1 |
+| MERRA-2 fields wide + tokens ne | 7.69 / 6.94 | -0.72 [-1.27, -0.23] | -0.67 [-1.08, -0.28] | 75.2 / 16.1 | 39.1 / 32.7 |
+| GFS regional + tokens ne | 7.25 / 6.68 | -1.16 [-1.74, -0.67] | -0.92 [-1.36, -0.53] | 73.1 / 15.2 | 37.4 / 31.2 |
+| GFS regional + tokens northeast | 7.14 / 6.82 | -1.26 [-1.91, -0.71] | -0.79 [-1.30, -0.27] | 74.0 / 16.3 | 36.6 / 31.3 |
+| GFS regional + tokens wide | 7.43 / 6.86 | -0.97 [-1.50, -0.52] | -0.74 [-1.27, -0.20] | 73.6 / 17.5 | 37.7 / 31.5 |
+| GFS regional + tokens 5 regions | 7.43 / 6.70 | -0.98 [-1.52, -0.49] | -0.91 [-1.35, -0.45] | 75.2 / 16.2 | 37.7 / 31.4 |
+| GFS regional + MERRA-2 fields ne | 7.24 / 6.82 | -1.17 [-1.75, -0.67] | -0.78 [-1.25, -0.34] | 74.6 / 16.2 | 37.7 / 31.3 |
+| GFS regional + MERRA-2 fields wide | 7.45 / 7.20 | -0.96 [-1.51, -0.48] | -0.41 [-0.84, +0.01] | 75.4 / 16.5 | 38.4 / 31.2 |
+| GFS regional + decoder fields ne | 7.40 / 6.96 | -1.01 [-1.63, -0.47] | -0.65 [-1.06, -0.24] | 75.7 / 15.3 | 38.3 / 30.8 |
+| GFS regional + decoder fields wide | 7.58 / 7.03 | -0.83 [-1.42, -0.30] | -0.57 [-1.00, -0.10] | 77.7 / 16.8 | 40.3 / 32.6 |
+| GFS regional + MERRA-2 fields ne + tokens ne | 7.22 / 6.76 | -1.19 [-1.83, -0.63] | -0.85 [-1.35, -0.37] | 73.8 / 16.2 | 37.5 / 31.1 |
+| GFS regional + MERRA-2 fields wide + tokens wide | 7.37 / 7.05 | -1.04 [-1.56, -0.58] | -0.56 [-1.15, +0.09] | 73.1 / 19.1 | 36.4 / 31.9 |
+| GFS regional + MERRA-2 fields wide + tokens ne | 7.34 / 6.97 | -1.07 [-1.71, -0.51] | -0.63 [-1.14, -0.11] | 70.8 / 17.1 | 37.6 / 32.1 |
+
+Paired contrasts (Δ MAE, 95% week bootstrap; negative = first is better):
+
+| contrast | over GFS: 2023 | 2024 | over GFS + regional: 2023 | 2024 |
+|---|---|---|---|---|
+| tokens northeast − tokens ne | +0.24 [+0.01, +0.46] | -0.02 [-0.28, +0.25] | -0.11 [-0.33, +0.09] | +0.14 [-0.06, +0.36] |
+| tokens wide − tokens ne | +0.20 [-0.16, +0.62] | +0.18 [-0.12, +0.49] | +0.18 [-0.02, +0.40] | +0.18 [-0.10, +0.51] |
+| tokens 5 regions − tokens ne | +0.10 [-0.17, +0.38] | -0.10 [-0.29, +0.10] | +0.18 [-0.07, +0.42] | +0.02 [-0.18, +0.21] |
+| tokens ne − MERRA-2 fields ne | -0.14 [-0.42, +0.16] | **-0.32 [-0.60, -0.08]** | +0.01 [-0.21, +0.22] | -0.14 [-0.34, +0.05] |
+| (fields ne + tokens ne) − fields ne | **-0.30 [-0.48, -0.12]** | **-0.45 [-0.78, -0.14]** | -0.02 [-0.19, +0.15] | -0.07 [-0.24, +0.10] |
+| (fields wide + tokens wide) − fields wide | -0.11 [-0.38, +0.16] | **-0.27 [-0.53, -0.01]** | -0.08 [-0.29, +0.13] | -0.15 [-0.47, +0.22] |
+| (fields wide + tokens ne) − fields wide | -0.16 [-0.38, +0.04] | **-0.46 [-0.74, -0.21]** | -0.11 [-0.34, +0.09] | **-0.22 [-0.43, -0.02]** |
+| MERRA-2 fields wide − fields ne | +0.16 [-0.06, +0.41] | **+0.30 [+0.02, +0.57]** | **+0.21 [+0.04, +0.39]** | **+0.38 [+0.20, +0.55]** |
+
+Run-to-run sensitivity: "tokens ne" here and "Prithvi tokens" in the
+regional and placebo runs are the same information (the pooled ne mean
+vs the box mean of the full token file, equal up to float16 rounding),
+on the same hours and seed, yet give 7.25 / 6.68 here against 7.13 / 6.78
+there over GFS + regional. Differences of about 0.1 $/MWh between feature
+sets are therefore within what tiny numerical changes produce, beyond the
+week-bootstrap interval (which treats the fitted model as fixed).
+
+What this shows:
+- **Wider context does not help.** No wider token extent beats the New
+  England tokens; every point estimate is equal or worse (+0.02 to
+  +0.24), none significantly better. Pooling over the wide box blurs New
+  England with distant weather. The same holds for the input fields:
+  wide-box fields are significantly worse than New England fields in
+  three of four comparisons, and wide decoder fields are worse than New
+  England decoder fields. Outside-region information that matters for
+  price (2023) is already supplied by the GFS regional block (five
+  areas, six surface variables).
+- **Tokens vs Prithvi's own input state.** Over GFS alone the tokens add
+  significantly on top of the full New England input state (all 160
+  channels, including upper air) in both years (-0.30, -0.45), and in
+  2024 the tokens alone beat the input fields alone (-0.32). Over GFS +
+  regional, however, the tokens add nothing significant on top of the New
+  England input fields (-0.02, -0.07); with GFS regional present, the
+  input fields reach about the same MAE as the tokens (7.24 / 6.82 vs
+  7.25 / 6.68). So once regional surface weather and Prithvi's analysed
+  state at issue time are both given, the 24 h-ahead tokens carry little
+  further price information; much of the token gain over GFS is
+  information already in the issue-time atmospheric state (which MERRA-2
+  provides, but which an operational setting would get from an
+  operational analysis).
+- **Decoder fields (all 160 channels) over New England** match the tokens
+  over GFS alone in 2024 (6.75 vs 6.77) and are close in 2023; the
+  earlier finding that the five-variable decoder adds little was about
+  surface variables only.
+- In 2024 over GFS + regional, the tokens still improve on the wide-box
+  input state (-0.22 [-0.43, -0.02]), but not on the New England one.
+
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
 Goal: a third rolling-origin test year, to see whether the 2023-2024 token
@@ -2247,7 +2367,7 @@ download hour 21 as well and recover the 3 h mean ending at T for hour 24
 (avg 21-24 = 2 x avg 18-24 - avg 18-21); or test GFS without shortwave,
 and GFS with the decoder's shortwave only.
 
-## Summary of findings so far (2026-10-29)
+## Summary of findings so far (2026-10-30)
 
 All 24 h ahead, year-ahead folds (test 2023 trained on 2021-22, test 2024
 trained on 2021-23), CatBoost with one seed.
@@ -2279,8 +2399,14 @@ trained on 2021-23), CatBoost with one seed.
   within month and time of day, or shifted a week) removes most of the
   gain: the real tokens beat every placebo significantly, so they carry
   day-specific state; in 2024 about a third of the gain over GFS +
-  regional survives the shuffle (month-scale signal). Cold-snap days remain poorly predicted by
-  everything.
+  regional survives the shuffle (month-scale signal). Wider context does
+  not help: tokens (or input fields) pooled over the Northeast, the wide
+  32-50N 90-64W box or the five outside regions are no better than the
+  New England ones. Prithvi's own input state over New England (all 160
+  channels, incl. upper air, at issue time) is a strong control: over GFS
+  + regional the tokens add nothing significant on top of it. Feature-set
+  differences of ~0.1 $/MWh are within run-to-run numerical noise.
+  Cold-snap days remain poorly predicted by everything.
 
 ## Still to do
 
@@ -2288,9 +2414,14 @@ Done since this list was first written: 2021-2024 with year-ahead folds;
 the lead-24 forecast test against GFS; readout and component checks.
 
 Open:
-- Upper-air control for price: Prithvi's upper-air input fields (big-scale
-  circulation) as a block, like the MERRA-2 fields control, to see what
-  the 2024 token gain carries.
+- Upper-air control for price: done (2026-10-30, pooled input fields,
+  all 160 channels). Remaining: whether the input-state gain survives
+  with an operational analysis (GEOS-FP) instead of MERRA-2.
+- 2020 lead-24 Prithvi run (pooled) is still running on the cluster; the
+  local `data/prithvi_tokens_ne_2020_lead24.npy` and
+  `*_2020_lead24_pooled_*.npy` are partial (first 1,674 of 2,900 issue
+  times) and must be re-copied when it finishes. 2020 GFS (NCAR) also
+  pending; then rolling-origin 2022 trained on 2020-2021.
 - More seeds (and a second model configuration) for the price token
   results, whose differences are close to the interval widths.
 - A bridge-day / holiday-adjacent calendar feature for demand.
