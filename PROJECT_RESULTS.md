@@ -2309,6 +2309,63 @@ What this shows:
 - In 2024 over GFS + regional, the tokens still improve on the wide-box
   input state (-0.22 [-0.43, -0.02]), but not on the New England one.
 
+### Surface vs upper-air input fields (2026-10-30)
+
+The 160 input channels split into 20 surface channels (EFLUX, GWETROOT,
+HFLUX, LAI, LWGAB, LWGEM, LWTUP, PS, QV2M, SLP, SWGNT, SWTNT, T2M, TQI,
+TQL, TQV, TS, U10M, V10M, Z0M) and 140 upper-air channels (CLOUD, H,
+OMEGA, PL, QI, QL, QV, T, U, V at 14 model levels), all MERRA-2 at issue
+time averaged over New England. Surface: all 20 channels (standardised);
+upper air: 50 PCs (98.5% of variance). Same setup and hours as above.
+Script: `local/price_benchmark.py --targets lmp --gas-features henryhub
+--upper-air-split`; outputs `results/regional/price_upper_air/`
+(contrasts in `upper_air_contrasts.csv`, log `results/price_upper_air.log`).
+
+MAE $/MWh (R²), 2023 / 2024:
+
+| added | over GFS | over GFS + regional |
+|---|---|---|
+| nothing | 8.41 / 7.60 (0.63 / 0.81) | 7.42 / 7.58 (0.70 / 0.81) |
+| surface fields | 8.04 / 7.03 (0.66 / 0.81) | 7.26 / 7.08 (0.72 / 0.82) |
+| upper-air fields | 7.69 / 7.37 (0.68 / 0.79) | 7.25 / 7.03 (0.71 / 0.81) |
+| all 160 fields | 7.68 / 7.10 (0.67 / 0.81) | 7.24 / 6.82 (0.71 / 0.83) |
+| tokens | 7.54 / 6.77 (0.69 / 0.83) | 7.25 / 6.68 (0.72 / 0.83) |
+| surface + tokens | 7.61 / 6.77 | 7.25 / 6.91 |
+| upper-air + tokens | 7.44 / 6.86 | 7.28 / 6.71 |
+| all 160 + tokens | 7.38 / 6.65 | 7.22 / 6.76 |
+
+Paired Δ MAE (95% week bootstrap), 2023 / 2024:
+
+| contrast | over GFS | over GFS + regional |
+|---|---|---|
+| surface − base | **-0.37** / **-0.57** | -0.16 / **-0.50** |
+| upper air − base | **-0.72** / -0.24 | -0.17 / **-0.55** |
+| tokens − base | **-0.87** / **-0.83** | -0.17 / **-0.90** |
+| tokens − upper air | -0.15 / **-0.60** | -0.00 / **-0.35** |
+| upper air − surface | **-0.35** / **+0.33** | -0.01 / -0.06 |
+| (upper air + tokens) − upper air | **-0.25** / **-0.51** | +0.03 / **-0.32** |
+| (surface + tokens) − surface | **-0.43** / **-0.27** | -0.01 / -0.18 |
+| (all 160 + tokens) − all 160 | **-0.30** / **-0.45** | -0.02 / -0.07 |
+
+(Bold: interval excludes zero. Intervals in the CSV.)
+
+What this shows:
+- Upper air alone does not replace the tokens. In 2024 the tokens beat
+  the upper-air fields (-0.60 over GFS, -0.35 over GFS + regional) and
+  still add on top of them (-0.51, -0.32). In 2023 upper air carries
+  most of what the tokens give over GFS (-0.72 vs -0.87), and over GFS +
+  regional none of these blocks helps significantly in 2023 (the 2023
+  gain is regional weather, which GFS regional already gives).
+- Surface alone does not replace them either over GFS (tokens add -0.43
+  / -0.27 on top).
+- Only surface and upper air together (all 160 channels) come close to
+  the tokens once GFS regional is present (tokens on top: -0.02 / -0.07,
+  not significant). So the token gain is not one identifiable piece
+  (upper-air circulation, or surface state) but roughly the whole
+  analysed atmospheric state at issue time over New England.
+- The 2023 over-GFS + regional token gain (-0.17) is not significant in
+  this run (it was -0.28 in the regional run; run-to-run noise ~0.1).
+
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
 Goal: a third rolling-origin test year, to see whether the 2023-2024 token
@@ -2404,7 +2461,9 @@ trained on 2021-23), CatBoost with one seed.
   32-50N 90-64W box or the five outside regions are no better than the
   New England ones. Prithvi's own input state over New England (all 160
   channels, incl. upper air, at issue time) is a strong control: over GFS
-  + regional the tokens add nothing significant on top of it. Feature-set
+  + regional the tokens add nothing significant on top of it. Neither its
+  surface part nor its upper-air part alone does this: in 2024 the
+  tokens beat upper air alone and add on top of it. Feature-set
   differences of ~0.1 $/MWh are within run-to-run numerical noise.
   Cold-snap days remain poorly predicted by everything.
 

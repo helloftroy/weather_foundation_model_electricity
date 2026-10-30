@@ -169,7 +169,13 @@ def main() -> None:
                              "wide box 32-50N 90-64W, and the five outside regions together), and the upper-air control "
                              "(Prithvi's own 160 input fields, and its decoder output, averaged over New England and the "
                              "wide box), each 50 PCs fitted on training times; on top of GFS and of GFS + GFS regional")
+    parser.add_argument("--upper-air-split", action="store_true",
+                        help="Split Prithvi's 160 input channels over New England into the 20 surface channels and the "
+                             "140 upper-air channels (10 variables x 14 model levels), 50 PCs each (all 20 surface), "
+                             "alone and with the tokens, on top of GFS and of GFS + GFS regional")
     args = parser.parse_args()
+    if args.upper_air_split:
+        args.pooled_extents = True
     if args.pooled_extents:
         args.regional = True
     if args.placebo:
@@ -231,6 +237,10 @@ def main() -> None:
                 year_blocks[f"tokens {e} (raw)"] = at_targets(pooled["tokens"][:, ext.index(e)])
             regions = [ext.index(e) for e in ("NY-PA", "MidAtlantic", "GreatLakes", "Southeast", "Quebec-Mar")]
             year_blocks["tokens 5 regions (raw)"] = at_targets(pooled["tokens"][:, regions])
+            if args.upper_air_split:
+                ne_inp = pooled["inputs"][:, ext.index("ne")]
+                year_blocks["surface fields ne (raw)"] = at_targets(ne_inp[:, :20])
+                year_blocks["upper-air fields ne (raw)"] = at_targets(ne_inp[:, 20:])
             for e in ("ne", "wide"):
                 year_blocks[f"MERRA-2 fields {e} (raw)"] = at_targets(pooled["inputs"][:, ext.index(e)])
                 year_blocks[f"decoder fields {e} (raw)"] = at_targets(pooled["recon"][:, ext.index(e)])
@@ -321,6 +331,11 @@ def main() -> None:
         extra = [[v] for v in extra] + [["MERRA-2 fields ne", "tokens ne"], ["MERRA-2 fields wide", "tokens wide"],
                                         ["MERRA-2 fields wide", "tokens ne"]]
         combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
+    if args.upper_air_split:
+        wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "tokens ne"
+        extra = [[T], ["surface fields ne"], ["upper-air fields ne"], ["MERRA-2 fields ne"],
+                 ["surface fields ne", T], ["upper-air fields ne", T], ["MERRA-2 fields ne", T]]
+        combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -352,7 +367,7 @@ def main() -> None:
                 blocks[f"tokens spatial k{k}"] = v
         if args.pooled_extents:
             for k in [k for k in sys_blocks if k.endswith(" (raw)") and k not in ("Prithvi tokens (raw)", "MERRA-2 fields (raw)")]:
-                blocks[k[:-6]], frac = pca(sys_blocks[k], train_times, 50)
+                blocks[k[:-6]], frac = pca(sys_blocks[k], train_times, min(50, sys_blocks[k].shape[1]))
                 print(f"  {k[:-6]}: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
         if args.input_control:
             blocks["MERRA-2 fields"] = pca(sys_blocks["MERRA-2 fields (raw)"], train_times, 50)[0]
