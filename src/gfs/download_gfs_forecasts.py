@@ -48,6 +48,15 @@ file (falling back to a scan from the start if a field is missed): about
 --also-ne writes gfs_ne_YEAR.nc as well, cropped from the --box output
 (the New England box lies inside the wide box; for 2021 the crop
 reproduces gfs_ne_2021.nc exactly), so each file is scanned only once.
+--also-crop NAME LAT_MIN LAT_MAX LON_MIN LON_MAX (repeatable) writes further
+crops of the --box output the same way, e.g. "wide" and "texas" from one
+union box: each field is fetched whole (global) anyway, so extra crops cost
+no extra downloading.
+
+--fhours: other forecast hours, for longer leads, e.g. 72 75 (3 days), 120
+123 (5 days), 168 171 (7 days); GFS 0.25 deg has 3-hourly output to 384 h.
+Outputs then carry the first hour as a suffix (gfs_ne_2023_f072.nc), and the
+default first run date moves back so the year's first targets are covered.
 """
 import argparse
 import struct
@@ -323,8 +332,8 @@ def _fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE, so
     return out, "fetched"
 
 
-def combine(out_dir, year, out_nc, source_note=BUCKET, also_ne=None):
-    files = sorted(out_dir.glob("gfs_??????????_f0??.npz"))  # all runs, incl. Dec 30-31 of the previous year (they cover Jan 1)
+def combine(out_dir, year, out_nc, source_note=BUCKET, also_ne=None, crops=()):
+    files = sorted(out_dir.glob("gfs_??????????_f???.npz"))  # all runs, incl. Dec 30-31 of the previous year (they cover Jan 1)
     if not files:
         raise SystemExit("Nothing to combine.")
     first = np.load(files[0])
@@ -349,6 +358,10 @@ def combine(out_dir, year, out_nc, source_note=BUCKET, also_ne=None):
         ne = ds.sel(lat=slice(LAT_RANGE[1], LAT_RANGE[0]), lon=slice(LON_RANGE[0] - 360.0, LON_RANGE[1] - 360.0))
         ne.to_netcdf(also_ne)
         print(f"Wrote {also_ne}: New England crop, {ne.sizes['lat']} x {ne.sizes['lon']}")
+    for path, (lat0, lat1, lon0, lon1) in crops:
+        c = ds.sel(lat=slice(lat1, lat0), lon=slice(lon0, lon1))
+        c.to_netcdf(path)
+        print(f"Wrote {path}: crop {c.sizes['lat']} x {c.sizes['lon']}")
 
 
 def main() -> None:
@@ -364,17 +377,24 @@ def main() -> None:
     parser.add_argument("--name", default="ne", help="Label for the output files (default 'ne')")
     parser.add_argument("--source", choices=["aws", "ncar"], default="aws", help="aws (2021 onward) or ncar (GDEX d084001, 2015 onward)")
     parser.add_argument("--also-ne", action="store_true", help="Also write gfs_ne_YEAR.nc, cropped from the --box output")
+    parser.add_argument("--also-crop", nargs=5, action="append", default=[], metavar=("NAME", "LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
+                        help="Also write gfs_NAME_YEAR.nc cropped from the --box output (repeatable; longitudes -180..180)")
+    parser.add_argument("--fhours", type=int, nargs="+", default=list(FHOURS),
+                        help="Forecast hours to fetch (default 24 27); others get a _fHHH suffix on the output names")
     args = parser.parse_args()
-    start = pd.Timestamp(args.start or f"{args.year - 1}-12-30")
+    fhours = tuple(args.fhours)
+    suffix = "" if fhours == FHOURS else f"_f{min(fhours):03d}"
+    back = max(fhours) // 24 + 2   # days before Jan 1 whose runs still reach the year
+    start = pd.Timestamp(args.start or (pd.Timestamp(f"{args.year}-01-01") - pd.Timedelta(days=back)).strftime("%Y-%m-%d"))
     end = pd.Timestamp(args.end or f"{args.year}-12-31") + pd.Timedelta(hours=18)
     runs = [r for r in pd.date_range(start, end, freq="6h") if r.hour in RUNS]
     lat_range, lon_range = LAT_RANGE, LON_RANGE
     if args.box:
         lat_range, lon_range = (args.box[0], args.box[1]), (args.box[2] % 360, args.box[3] % 360)
-    raw_dir = args.out_dir / f"gfs_{args.name}_{args.year}_parts"
+    raw_dir = args.out_dir / f"gfs_{args.name}_{args.year}{suffix}_parts"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    jobs = [(r, f) for r in runs for f in FHOURS]
-    print(f"{len(runs)} runs x {len(FHOURS)} forecast hours = {len(jobs)} files, {args.workers} at a time", flush=True)
+    jobs = [(r, f) for r in runs for f in fhours]
+    print(f"{len(runs)} runs x {len(fhours)} forecast hours = {len(jobs)} files, {args.workers} at a time", flush=True)
     counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0, "failed": 0}
     missing = []
     with ThreadPoolExecutor(args.workers) as pool:
@@ -391,8 +411,9 @@ def main() -> None:
                          "just those (finished files are kept), then it combines")
     if missing:
         print(f"{len(missing)} forecast files missing from the archive or unreadable, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
-    combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}.nc", NCAR if args.source == "ncar" else BUCKET,
-            args.out_dir / f"gfs_ne_{args.year}.nc" if args.also_ne else None)
+    crops = [(args.out_dir / f"gfs_{c[0]}_{args.year}{suffix}.nc", tuple(float(v) for v in c[1:])) for c in args.also_crop]
+    combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}{suffix}.nc", NCAR if args.source == "ncar" else BUCKET,
+            args.out_dir / f"gfs_ne_{args.year}{suffix}.nc" if args.also_ne else None, crops)
 
 
 if __name__ == "__main__":

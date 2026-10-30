@@ -34,8 +34,8 @@ def _masks(lat, lon):
     return [((lat >= a) & (lat <= b))[:, None] & ((lon >= c) & (lon <= d))[None, :] for a, b, c, d in REGIONS.values()]
 
 
-def gfs_regional(path, targets):
-    ds, pick = gfs_for_targets(path, targets)
+def gfs_regional(path, targets, leads=(24, 27)):
+    ds, pick = gfs_for_targets(path, targets, leads)
     masks = _masks(ds.lat.values, ds.lon.values)
     out = np.full((len(targets), len(REGIONS), len(NAMES)), np.nan, np.float32)
     ok = pick >= 0

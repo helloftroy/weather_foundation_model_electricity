@@ -41,12 +41,22 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 # GRIB reader (pip wheels include the ecCodes library). Installed once.
 python -c "import eccodes, requests" 2>/dev/null || pip install --quiet eccodes eccodeslib requests
 
+# Longer leads: FHOURS="72 75" (or "120 123", "168 171"); outputs get a _f072 suffix.
+# Extra crops from the same pass: ALSO_CROP="wide 32 50 -90 -64;texas 25 37 -107 -93".
+CROP_ARGS=()
+if [ -n "${ALSO_CROP:-}" ]; then
+  IFS=';' read -ra CROPS <<< "${ALSO_CROP}"
+  for c in "${CROPS[@]}"; do CROP_ARGS+=(--also-crop ${c}); done
+fi
+
 python "${REPO_ROOT}/src/gfs/download_gfs_forecasts.py" \
   --year "${YEAR}" \
   --out-dir "${SCRATCH_ROOT}/data/gfs" \
   --workers "${WORKERS}" \
   ${BOX:+--box ${BOX} --name ${NAME:-wide}} \
   ${SOURCE:+--source ${SOURCE}} \
-  ${ALSO_NE:+--also-ne}
+  ${ALSO_NE:+--also-ne} \
+  ${FHOURS:+--fhours ${FHOURS}} \
+  ${CROP_ARGS[@]+"${CROP_ARGS[@]}"}
 
 echo "Job finished: $(date)"

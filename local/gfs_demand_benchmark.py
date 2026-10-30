@@ -63,13 +63,13 @@ GFS_VARS = {"T2M": "TMP_2m", "QV2M": "SPFH_2m", "U10M": "UGRD_10m", "V10M": "VGR
 NAMES = WEATHER_VARS + ["wind_speed"]
 
 
-def gfs_for_targets(path, targets):
-    """GFS fields for each target time: the lead-24 forecast if there is one, else lead 27."""
+def gfs_for_targets(path, targets, leads=(24, 27)):
+    """GFS fields for each target time: the leads[0] forecast (default 24 h) if there is one, else leads[1] (27 h)."""
     ds = xr.open_dataset(path)
     vt = pd.DatetimeIndex(ds.valid_time.values)
     lead = ds.lead_hours.values
     pick = np.full(len(targets), -1)
-    for want in (27, 24):  # 24 overwrites 27 where both exist
+    for want in (leads[1], leads[0]):  # the shorter lead overwrites the longer where both exist
         idx = pd.Series(np.where(lead == want)[0], index=vt[lead == want])
         idx = idx[~idx.index.duplicated()]
         pos = idx.reindex(targets).to_numpy()

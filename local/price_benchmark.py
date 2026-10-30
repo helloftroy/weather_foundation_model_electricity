@@ -176,7 +176,21 @@ def main() -> None:
     parser.add_argument("--save-shap", action="store_true",
                         help="Only GFS and GFS + tokens (PCA-50); save the token PC scores for every target time, the PCA "
                              "loadings, and per-hour SHAP values of the GFS + tokens model on the test year (shap/ in out-dir)")
+    parser.add_argument("--lead-days", type=int, default=1,
+                        help="Forecast lead in days (1, 3, 5, 7). Everything is issued L days before the target: price lags "
+                             "of L, L+1 and 7 days (14 when L = 7), Henry Hub for the last trading day <= D-L, weather at the "
+                             "issue time, GFS L x 24 h (or +3 h) forecast (gfs_ne_YEAR_fHHH.nc), and the lead-24 Prithvi "
+                             "tokens from the issue time (the model's own one-day-ahead state; the model is not run beyond its "
+                             "supported lead). Feature sets: GFS and tokens, with --regional also GFS regional.")
+    parser.add_argument("--dart", action="store_true",
+                        help="Target the DART spread (real-time minus day-ahead hub LMP) instead of the day-ahead price. "
+                             "The prediction is made after the day-ahead price is published (about 13:30 ET on D-1) and "
+                             "before the real-time hour, so the day-ahead price for the hour is a feature; weather, GFS and "
+                             "tokens keep their 24 h-ahead alignment (known by then, conservatively stale); spread lags start "
+                             "at 25 h (the latest real-time hour surely known). Use with --targets lmp.")
     args = parser.parse_args()
+    if args.dart and args.targets != ["lmp"]:
+        raise SystemExit("--dart needs --targets lmp")
     if args.upper_air_split:
         args.pooled_extents = True
     if args.pooled_extents:
@@ -187,6 +201,13 @@ def main() -> None:
         args.regional = True
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
+    L = args.lead_days
+    H = pd.Timedelta(hours=24 * L)
+    gfs_sfx, gfs_leads = ("", (24, 27)) if L == 1 else (f"_f{24 * L:03d}", (24 * L, 24 * L + 3))
+    if args.dart:
+        LAGS_USED = {"lag25h": pd.Timedelta(hours=25), "lag48h": pd.Timedelta(hours=48), "lag7d": pd.Timedelta(days=7)}
+    lags = (LAGS_USED if args.dart else LAGS) if L == 1 else {f"lag{L}d": pd.Timedelta(days=L), f"lag{L + 1}d": pd.Timedelta(days=L + 1),
+                                ("lag7d" if L < 7 else "lag14d"): pd.Timedelta(days=7 if L < 7 else 14)}
     zn = list(ZONES)
 
     # ---- system-level hourly table: calendar, hub price, gas ----
@@ -199,6 +220,12 @@ def main() -> None:
         lmp = pd.read_parquet(c / f"isone_dayahead_hourly_lmp_{y}.parquet")
         lmp["timestamp"] = pd.to_datetime(lmp["timestamp_parsed"]).astype("datetime64[ns]")
         hourly = hourly.join(lmp[lmp["location"] == "HUB"].set_index("timestamp")["lmp_total"], how="inner")
+        if args.dart:
+            rt = pd.read_parquet(c / f"isone_realtime_hourly_lmp_{y}.parquet")
+            rt["timestamp"] = pd.to_datetime(rt["timestamp_parsed"]).astype("datetime64[ns]")
+            hourly["da_lmp"] = hourly["lmp_total"]
+            hourly = hourly.join(rt[rt["location"] == "HUB"].set_index("timestamp")["lmp_total"].rename("rt_lmp"), how="inner")
+            hourly["lmp_total"] = hourly["rt_lmp"] - hourly["da_lmp"]
         gas = pd.read_csv(args.data_dir / "gas" / f"gas_prices_daily_{y}.csv", parse_dates=["date"]).set_index("date")["algonquin_weekly"]
         hourly["gas"] = gas.reindex(hourly["timestamp_local"].dt.normalize()).to_numpy()
         rows.append(hourly.reset_index())
@@ -210,23 +237,24 @@ def main() -> None:
         if prev.exists():
             weather = pd.concat([pd.read_parquet(prev).set_index("timestamp"), weather])
             weather = weather[~weather.index.duplicated(keep="last")].sort_index()
-        ds, pick = gfs_for_targets(args.data_dir / "gfs" / f"gfs_ne_{y}.nc", t)
+        ds, pick = gfs_for_targets(args.data_dir / "gfs" / f"gfs_ne_{y}{gfs_sfx}.nc", t, gfs_leads)
         _, gfs_area = zone_features(ds, pick, t, zn)
         pv = prithvi_features(args.prithvi_dir, y, t, weather, zn)
         w = lambda a: (a * share[None, :, None]).sum(axis=1)  # noqa: E731  [T, zone, 6] -> [T, 6]
-        year_blocks = {"weather (issue)": w(merra_features(weather, t - pd.Timedelta(hours=24), zn)), "GFS area": w(gfs_area),
+        year_blocks = {"weather (issue)": w(merra_features(weather, t - H, zn)), "GFS area": w(gfs_area),
                        "Prithvi area": w(pv["Prithvi area"]), "true area": w(pv["true area"])}
         # tokens for each target time: the sample issued 24 h before it
         meta = json.loads((args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.json").read_text())
         issue = pd.DatetimeIndex(meta["timestamps"])
         tok = box_tokens(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.npy")
-        pos = issue.get_indexer(t - pd.Timedelta(hours=24))
+        pos = issue.get_indexer(t - H)
         tok_t = np.full((len(t), tok.shape[1]), np.nan, np.float32)
         tok_t[pos >= 0] = tok[pos[pos >= 0]]
         year_blocks["Prithvi tokens (raw)"] = tok_t
         if args.regional:
-            year_blocks["GFS regional"] = gfs_regional(args.data_dir / "gfs" / f"gfs_wide_{y}.nc", t)
-            year_blocks.update(prithvi_regional(args.prithvi_dir, y, t, weather))
+            year_blocks["GFS regional"] = gfs_regional(args.data_dir / "gfs" / f"gfs_wide_{y}{gfs_sfx}.nc", t, gfs_leads)
+            if L == 1:
+                year_blocks.update(prithvi_regional(args.prithvi_dir, y, t, weather))
         if args.pooled_extents:
             stem = args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24"
             ext = list(meta["pooled"]["extents"])
@@ -268,9 +296,9 @@ def main() -> None:
     alg = alg.drop_duplicates("date").set_index("date")["price"].sort_index()
     lmp_s = df.set_index("timestamp")["lmp_total"]
     trailing = lmp_s.rolling("168h").mean()
-    norm = {"hr_henryhub": hh.reindex((day - pd.Timedelta(days=1)).to_numpy(), method="ffill").to_numpy(),
-            "hr_algonquin": alg.reindex((day - pd.Timedelta(days=2)).to_numpy(), method="ffill").to_numpy(),
-            "lmp_rel7d": trailing.reindex(df["timestamp"] - pd.Timedelta(hours=24)).to_numpy(),
+    norm = {"hr_henryhub": hh.reindex((day - pd.Timedelta(days=L)).to_numpy(), method="ffill").to_numpy(),
+            "hr_algonquin": alg.reindex((day - pd.Timedelta(days=L + 1)).to_numpy(), method="ffill").to_numpy(),
+            "lmp_rel7d": trailing.reindex(df["timestamp"] - H).to_numpy(),
             "lmp": np.ones(len(df)), "heat_rate": df["gas"].to_numpy()}
     gas_cols = [f"gas_known_{g}" for g in args.gas_features]
     for g in args.gas_features:
@@ -286,10 +314,10 @@ def main() -> None:
         s = df.set_index("timestamp")[f"y_{target}"]
         day_mean = s.rolling("24h").mean()
         cols = []
-        for k, d in LAGS.items():
+        for k, d in lags.items():
             df[f"past_{target}__{k}"] = s.reindex(df["timestamp"] - d).to_numpy()
             cols.append(f"past_{target}__{k}")
-        df[f"past_{target}__mean24h_to_lag24h"] = day_mean.reindex(df["timestamp"] - pd.Timedelta(hours=24)).to_numpy()
+        df[f"past_{target}__mean24h_to_lag24h"] = day_mean.reindex(df["timestamp"] - (H + pd.Timedelta(hours=1) if args.dart else H)).to_numpy()
         cols.append(f"past_{target}__mean24h_to_lag24h")
         lag_cols[target] = cols   # built explicitly: selecting columns by name prefix leaked the target once
     for t, cols in lag_cols.items():
@@ -339,6 +367,12 @@ def main() -> None:
         extra = [[T], ["surface fields ne"], ["upper-air fields ne"], ["MERRA-2 fields ne"],
                  ["surface fields ne", T], ["upper-air fields ne", T], ["MERRA-2 fields ne", T]]
         combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
+    if args.dart:
+        wi, G, T = "weather (issue)", "GFS area", "Prithvi tokens"
+        combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]]
+    if L != 1:
+        wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
+        combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
     if args.save_shap:
         combos = [["weather (issue)", "GFS area"], ["weather (issue)", "GFS area", "Prithvi tokens"]]
     if args.input_control:
@@ -384,7 +418,7 @@ def main() -> None:
             print(f"\n[{target}, test {test_year}, train {min(args.years)}-{test_year - 1}] train {tr.sum()} h, test {te.sum()} h; "
                   f"test price mean ${lmp_all[te].mean():.2f}, sd ${lmp_all[te].std():.2f}", flush=True)
             for combo in combos:
-                X = df[CALENDAR + lag_cols[target] + gas_cols].copy()
+                X = df[CALENDAR + lag_cols[target] + gas_cols + (["da_lmp"] if args.dart else [])].copy()
                 for b in combo:
                     names = [f"{b}_{n}" for n in (NAMES if blocks[b].shape[1] == len(NAMES) else range(blocks[b].shape[1]))]
                     X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)
@@ -410,10 +444,21 @@ def main() -> None:
                 mae = float(np.abs(err).mean())
                 r2 = float(1 - (err ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum())
                 name = "calendar + past values" + (" + known gas" if gas_cols else "") + "".join(f" + {b}" for b in combo)
+                if args.dart and combo == []:   # reference: no spread expected (real time = day ahead)
+                    zero = np.zeros(te.sum())
+                    all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target,
+                                                   "feature_set": "zero spread (real time = day ahead)", "actual": lmp_all[te],
+                                                   "pred": zero, "week": week[te], "cold_snap": hard["cold_snap"].to_numpy()[te],
+                                                   "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                    results.append({"target": target, "test_year": test_year, "feature_set": "zero spread (real time = day ahead)",
+                                    "mae": float(np.abs(lmp_all[te]).mean()), "median_ae": float(np.median(np.abs(lmp_all[te]))),
+                                    "r2": float(1 - (lmp_all[te] ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum()),
+                                    "rmse": float(np.sqrt((lmp_all[te] ** 2).mean())), "n_test_hours": int(te.sum())})
                 all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name,
                                                "actual": lmp_all[te], "pred": price, "week": week[te],
                                                "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
                 results.append({"target": target, "test_year": test_year, "feature_set": name, "mae": mae, "r2": r2,
+                                "median_ae": float(np.median(np.abs(err))),
                                 "rmse": float(np.sqrt((err ** 2).mean())), "n_test_hours": int(te.sum())})
                 print(f"  {name:75s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
                 pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)

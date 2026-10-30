@@ -66,10 +66,20 @@ LAYERS="${LAYERS:-}"
 LEAD_TIME="${LEAD_TIME:-0}"
 SUFFIX=""
 if [ "${LEAD_TIME}" != "0" ]; then SUFFIX="_lead${LEAD_TIME}"; fi
-OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}${SUFFIX}.parquet}"
+# REGION=ercot: Texas instead of New England -- token box over ERCOT, ERCOT pooled extents, a wide box around
+# Texas, and output names prithvi_*_tx_* so nothing of the New England run is overwritten.
+REGION="${REGION:-ne}"
+if [ "${REGION}" = "ercot" ]; then
+  TAG="tx"; TOKEN_BOX="${TOKEN_BOX:-26 37 -106.25 -93.75}"; POOL_SET="ercot"; WIDE_BOX="${WIDE_BOX:-24 40 -110 -88}"
+else
+  TAG="ne"; TOKEN_BOX="${TOKEN_BOX:-}"; POOL_SET="ne"
+fi
+PARQUET_TAG=""
+if [ "${REGION}" = "ercot" ]; then PARQUET_TAG="_tx"; fi
+OUT_PARQUET="${OUT_PARQUET:-${SCRATCH_ROOT}/data/compact/prithvi_embeddings_${YEAR}${SUFFIX}${PARQUET_TAG}.parquet}"
 # Un-pooled patch tokens over New England (about 0.85 GB per year), plus the
 # model's normalised inputs (~0.2 GB) and decoder output for the same box.
-OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_ne_${YEAR}${SUFFIX}.npy}"
+OUT_TOKENS="${OUT_TOKENS:-${SCRATCH_ROOT}/data/compact/prithvi_tokens_${TAG}_${YEAR}${SUFFIX}.npy}"
 START="${START:-${YEAR}-01-01}"
 END="${END:-${YEAR}-12-31T23:59:59}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
@@ -95,6 +105,8 @@ python "${REPO_ROOT}/src/prithvi/extract_embeddings.py" \
   --layers ${LAYERS} \
   ${WIDE_BOX:+--wide-box ${WIDE_BOX}} \
   ${POOLED:+--pooled} \
+  --pool-set "${POOL_SET}" \
+  ${TOKEN_BOX:+--token-box ${TOKEN_BOX}} \
   ${WIDE_PATCH_TOKENS:+--save-wide-patch-tokens}
 
 echo "Job finished: $(date)"

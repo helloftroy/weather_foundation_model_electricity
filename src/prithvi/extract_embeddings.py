@@ -73,6 +73,20 @@ POOL_EXTENTS = {
     "Southeast": (32.0, 36.0, -90.0, -75.0),
     "Quebec-Mar": (45.0, 50.0, -80.0, -64.0),
 }
+# ERCOT (Texas) extents, for the ERCOT price replication (--pool-set ercot). Hub areas follow ERCOT's
+# hubs: North (Dallas-Fort Worth, North Central), Houston, South (Austin, San Antonio, Corpus Christi, the Valley),
+# West (Permian Basin, Abilene) and the Panhandle; "ercot" is the whole ERCOT footprint and "texas_wide" its
+# surroundings (Oklahoma, New Mexico, Louisiana, northern Mexico) for a later regional test.
+POOL_EXTENTS_ERCOT = {
+    "ercot": (26.0, 36.5, -106.5, -93.5),
+    "texas_wide": (24.0, 40.0, -110.0, -88.0),
+    "north": (31.5, 34.5, -99.0, -95.0),
+    "houston": (28.5, 31.0, -96.5, -94.0),
+    "south": (26.0, 31.0, -100.5, -96.5),
+    "west": (30.0, 34.0, -104.5, -99.0),
+    "panhandle": (34.0, 36.5, -103.0, -100.0),
+}
+POOL_SETS = {"ne": POOL_EXTENTS, "ercot": POOL_EXTENTS_ERCOT}
 # The global MERRA-2 grid has 361 latitude rows (both poles); the model uses 360.
 # Dropping the last row is what the repo's own notebooks do.
 GLOBAL_PADDING = {"level": [0, 0], "lat": [0, -1], "lon": [0, 0]}
@@ -169,10 +183,13 @@ def main() -> None:
                              "and decoder output channels for the target time averaged over its pixels (*_pooled_inputs.npy, "
                              "*_pooled_recon.npy, [time, extent, channel], float32, normalised). Small; for the mechanistic "
                              "controls (wider latent state, upper-air conditions). Requires --out-tokens.")
+    parser.add_argument("--pool-set", choices=sorted(POOL_SETS), default="ne",
+                        help="Which extents --pooled averages over: 'ne' (New England and surroundings, default) or 'ercot'")
     parser.add_argument("--save-wide-patch-tokens", action="store_true",
                         help="Also save every final-layer patch token over the 'wide' extent (*_wide_tokens.npy, float16, "
                              "about 5-6 GB per year); for later interpretability, not needed for the pooled tests")
     args = parser.parse_args()
+    extents = POOL_SETS[args.pool_set]
     if (args.pooled or args.save_wide_patch_tokens) and args.out_tokens is None:
         raise SystemExit("--pooled / --save-wide-patch-tokens need --out-tokens (they share its file stem).")
 
@@ -408,14 +425,14 @@ def main() -> None:
         pooled = wide_tok = None
         if args.pooled:
             ext_patches, ext_px = {}, {}
-            for name, box in POOL_EXTENTS.items():
+            for name, box in extents.items():
                 ext_patches[name] = patches_in(box, f"pool extent {name}")
                 la = np.where((grid_lats >= box[0]) & (grid_lats <= box[1]))[0]
                 lo = np.where((grid_lons >= box[2]) & (grid_lons <= box[3]))[0]
                 ext_px[name] = (slice(int(la[0]), int(la[-1]) + 1), slice(int(lo[0]), int(lo[-1]) + 1))
                 e = ext_patches[name]
                 print(f"  pool extent {name:12s}: {e[1] - e[0]} x {e[3] - e[2]} patches, {len(la)} x {len(lo)} pixels")
-            n_ext, n_ch = len(POOL_EXTENTS), p["in_channels"]
+            n_ext, n_ch = len(extents), p["in_channels"]
             pooled = {"tokens": np.lib.format.open_memmap(f"{stem}_pooled_tokens.npy", mode="w+", dtype=np.float16, shape=(n_samples, n_ext, embed_dim)),
                       "inputs": np.lib.format.open_memmap(f"{stem}_pooled_inputs.npy", mode="w+", dtype=np.float32, shape=(n_samples, n_ext, n_ch)),
                       "recon": np.lib.format.open_memmap(f"{stem}_pooled_recon.npy", mode="w+", dtype=np.float32, shape=(n_samples, n_ext, n_ch))}
@@ -484,7 +501,7 @@ def main() -> None:
                 if pooled is not None or wide_tok is not None:
                     grid_tok = patch_grid(x_encoded, n_global_lat, n_global_lon, local_lat, local_lon)   # [B, rows, cols, C]
                 if pooled is not None:
-                    for e, name in enumerate(POOL_EXTENTS):
+                    for e, name in enumerate(extents):
                         r0e, r1e, c0e, c1e = ext_patches[name]
                         pooled["tokens"][idx:idx + b, e] = grid_tok[:, r0e:r1e, c0e:c1e].mean(dim=(1, 2)).to(torch.float16).cpu().numpy()
                         pla, plo = ext_px[name]
@@ -547,7 +564,7 @@ def main() -> None:
                          "pixel_lats": grid_lats[wide_px[2]].tolist(), "pixel_lons": grid_lons[wide_px[3]].tolist(),
                          "layout": "[time, channel, lat_pixel, lon_pixel], normalised; recon = decoder output for the target time, "
                                    "inputs = true values at the issue time"}} if wide else {}),
-            **({"pooled": {"extents": {k: list(v) for k, v in POOL_EXTENTS.items()},
+            **({"pooled": {"extents": {k: list(v) for k, v in extents.items()}, "pool_set": args.pool_set,
                            "tokens_file": f"{stem.name}_pooled_tokens.npy", "inputs_file": f"{stem.name}_pooled_inputs.npy",
                            "recon_file": f"{stem.name}_pooled_recon.npy",
                            "channels": list(SURFACE_VARS) + [f"{v}_{int(l)}" for v in VERTICAL_VARS for l in LEVELS],
