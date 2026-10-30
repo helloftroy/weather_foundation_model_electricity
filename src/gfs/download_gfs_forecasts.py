@@ -192,7 +192,7 @@ def ncar_size(url):
     return int(r.headers["Content-Length"]) if r.status_code == 200 else None
 
 
-def find_boundary(url, offset, chunk=4_000_000):
+def find_boundary(url, offset, chunk=2_000_000):
     """Offset of the first GRIB2 message starting at or after `offset` (checked: edition 2, and the message ends
     in '7777' where its length says it does). None if none found in the chunk."""
     data = ncar_get(url, (offset, offset + chunk - 1)) or b""
@@ -230,20 +230,33 @@ def describe_header(head):
     return None
 
 
-def scan_ranges(url, max_messages=2000, start_fraction=0.6):
-    """Build {field: (start, end, text)} for FIELDS by walking the GRIB message headers with byte ranges,
-    starting from a message boundary near `start_fraction` of the file; from the start if that misses a field."""
+# Where the fields sit in a GFS 0.25 deg file, as a fraction of its size (measured 2020-2024: the 2 m/10 m fields at
+# 0.69-0.72, the averaged shortwave at 0.79-0.80). Walking headers from just before each group needs ~25 small
+# requests per file instead of ~130 from 0.6, which NCAR's server throttles (connection resets) at 12 workers.
+GROUPS = ((0.66, ("TMP_2m", "SPFH_2m", "UGRD_10m", "VGRD_10m")), (0.765, ("DSWRF_sfc", "USWRF_sfc")))
+
+
+def scan_ranges(url, max_messages=2000):
+    """Build {field: (start, end, text)} for FIELDS by walking the GRIB message headers with byte ranges, from a
+    message boundary just before each group of fields; from the start of the file if that misses a field."""
     size = ncar_size(url)
     if size is None:
         return None
-    start = find_boundary(url, int(size * start_fraction)) if start_fraction else 0
-    out = walk(url, start or 0, max_messages)
-    if len(out) < len(GRIB_CODES) and start:
+    out = {}
+    for fraction, names in GROUPS:
+        start = find_boundary(url, int(size * fraction))
+        if start is not None:
+            out.update(walk(url, start, 60, wanted=names))
+    if len(out) < len(GRIB_CODES):  # other layouts (e.g. later GFS versions): walk from 60% of the file, then from the start
+        start = find_boundary(url, int(size * 0.6))
+        out = walk(url, start, max_messages) if start is not None else {}
+    if len(out) < len(GRIB_CODES):
         out = walk(url, 0, max_messages)
     return out
 
 
-def walk(url, offset, max_messages):
+def walk(url, offset, max_messages, wanted=None):
+    wanted = set(wanted or GRIB_CODES)
     out = {}
     for _ in range(max_messages):
         head = ncar_get(url, (offset, offset + 511))
@@ -255,16 +268,24 @@ def walk(url, offset, max_messages):
         d = describe_header(head)
         if d:
             for name, (disc, cat, num, surf, val, avg) in GRIB_CODES.items():
-                if name not in out and d[:3] == (disc, cat, num) and d[4] == surf and (val is None or d[5] == val) \
-                        and (not avg or d[3] == 8) and (avg or d[3] == 0):
+                if name in wanted and name not in out and d[:3] == (disc, cat, num) and d[4] == surf \
+                        and (val is None or d[5] == val) and (not avg or d[3] == 8) and (avg or d[3] == 0):
                     out[name] = (offset, offset + total - 1, f"GRIB {disc}/{cat}/{num} surface {surf}:{d[5]} template 4.{d[3]}")
-        if len(out) == len(GRIB_CODES):
+        if len(out) == len(wanted):
             break
         offset += total
     return out
 
 
 def fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE, source="aws"):
+    try:
+        return _fetch_one(run, fhour, out_dir, lat_range, lon_range, source)
+    except RuntimeError as e:
+        print(f"  giving up on {run:%Y-%m-%d %H}z f{fhour:03d} for now: {str(e)[:160]}", flush=True)
+        return None, "failed"
+
+
+def _fetch_one(run, fhour, out_dir, lat_range=LAT_RANGE, lon_range=LON_RANGE, source="aws"):
     out = out_dir / f"gfs_{run:%Y%m%d%H}_f{fhour:03d}.npz"
     if out.exists():
         return out, "kept"
@@ -354,7 +375,7 @@ def main() -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     jobs = [(r, f) for r in runs for f in FHOURS]
     print(f"{len(runs)} runs x {len(FHOURS)} forecast hours = {len(jobs)} files, {args.workers} at a time", flush=True)
-    counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0}
+    counts = {"kept": 0, "fetched": 0, "missing": 0, "bad": 0, "failed": 0}
     missing = []
     with ThreadPoolExecutor(args.workers) as pool:
         futures = {pool.submit(fetch_one, r, f, raw_dir, lat_range, lon_range, args.source): (r, f) for r, f in jobs}
@@ -365,6 +386,9 @@ def main() -> None:
                 missing.append(futures[fut])
             if i % 200 == 0 or i == len(jobs):
                 print(f"...{i}/{len(jobs)} ({counts})", flush=True)
+    if counts["failed"]:
+        raise SystemExit(f"{counts['failed']} files failed after retries (server resets?); resubmit the same job to fetch "
+                         "just those (finished files are kept), then it combines")
     if missing:
         print(f"{len(missing)} forecast files missing from the archive or unreadable, e.g. {[f'{r:%Y-%m-%d %H}z f{f:03d}' for r, f in missing[:5]]}")
     combine(raw_dir, args.year, args.out_dir / f"gfs_{args.name}_{args.year}.nc", NCAR if args.source == "ncar" else BUCKET,
