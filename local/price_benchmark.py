@@ -173,6 +173,9 @@ def main() -> None:
                         help="Split Prithvi's 160 input channels over New England into the 20 surface channels and the "
                              "140 upper-air channels (10 variables x 14 model levels), 50 PCs each (all 20 surface), "
                              "alone and with the tokens, on top of GFS and of GFS + GFS regional")
+    parser.add_argument("--save-shap", action="store_true",
+                        help="Only GFS and GFS + tokens (PCA-50); save the token PC scores for every target time, the PCA "
+                             "loadings, and per-hour SHAP values of the GFS + tokens model on the test year (shap/ in out-dir)")
     args = parser.parse_args()
     if args.upper_air_split:
         args.pooled_extents = True
@@ -336,6 +339,8 @@ def main() -> None:
         extra = [[T], ["surface fields ne"], ["upper-air fields ne"], ["MERRA-2 fields ne"],
                  ["surface fields ne", T], ["upper-air fields ne", T], ["MERRA-2 fields ne", T]]
         combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
+    if args.save_shap:
+        combos = [["weather (issue)", "GFS area"], ["weather (issue)", "GFS area", "Prithvi tokens"]]
     if args.input_control:
         combos = [[], ["weather (issue)", "GFS area"], ["weather (issue)", "Prithvi tokens"], ["weather (issue)", "MERRA-2 fields"],
                   ["weather (issue)", "GFS area", "Prithvi tokens"], ["weather (issue)", "GFS area", "MERRA-2 fields"],
@@ -387,6 +392,19 @@ def main() -> None:
                                           thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
                 model.fit(Pool(X[tr], y_fit[tr]))
                 pred = model.predict(X[te])
+                if args.save_shap and "Prithvi tokens" in combo:
+                    sd = args.out_dir / "shap"
+                    sd.mkdir(exist_ok=True)
+                    sv = model.get_feature_importance(Pool(X[te], y_fit[te]), type="ShapValues")  # [n, features + 1]
+                    pd.DataFrame(sv[:, :-1], columns=X.columns).assign(timestamp=df["timestamp"].to_numpy()[te]).to_parquet(
+                        sd / f"shap_{target}_{test_year}.parquet", index=False)
+                    raw = sys_blocks["Prithvi tokens (raw)"]
+                    Tr = raw[train_times].astype(np.float64)
+                    mu, sdv = Tr.mean(0), Tr.std(0)
+                    sdv[sdv == 0] = 1
+                    _, _, vt = np.linalg.svd((Tr - mu) / sdv, full_matrices=False)
+                    np.savez(sd / f"token_pcs_{test_year}.npz", scores=blocks["Prithvi tokens"], targets=targets.values.astype("datetime64[ns]"),
+                             loadings=vt[:50].astype(np.float32), mu=mu.astype(np.float32), sd=sdv.astype(np.float32), train_times=train_times)
                 price = pred * df[f"N_{target}"].to_numpy()[te]
                 err = price - lmp_all[te]
                 mae = float(np.abs(err).mean())

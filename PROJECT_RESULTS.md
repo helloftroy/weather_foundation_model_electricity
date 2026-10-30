@@ -2366,6 +2366,50 @@ What this shows:
 - The 2023 over-GFS + regional token gain (-0.17) is not significant in
   this run (it was -0.28 in the regional run; run-to-run noise ~0.1).
 
+## Price: which token components matter, and what weather they encode (2026-10-30)
+
+Model: GFS + New England tokens (PCA-50 per fold), raw LMP, Henry Hub
+known; refit with `local/price_benchmark.py --targets lmp --gas-features
+henryhub --save-shap` (MAE 7.55 / 6.74, as before). SHAP values from
+CatBoost (`ShapValues`) on the test year; outputs
+`results/price_token_shap/shap/`.
+
+- Token PCs carry 18.5% (2023) and 20.9% (2024) of total mean |SHAP|.
+  The top features remain the price 24 h earlier, Henry Hub and GFS
+  temperature.
+- PCs are refit per fold, so fold-2023 PCs were matched to fold-2024 PCs
+  by score correlation. Three are top-ranked in both folds:
+  PC23 (rank 1 / 1, match r = 0.87), PC2 (5 / 2, r = 0.97), PC19 (4 / 3,
+  r = 0.91). Next: PC38/37 (2 / 10), PC32/33 (9 / 5), PC13/12 (13 / 4).
+- All three are mostly day-to-day, not seasonal: month x hour means
+  explain 15%, 6% and 6% of their variance (PC1, by contrast, is 78%
+  seasonal). PC23 drifts somewhat by year (mean -0.66, -0.38, +1.07,
+  +0.50 for 2021-2024, against a standard deviation of 4.9).
+
+Script `local/token_pc_composites.py` (fold-2024 PCA, all 2021-2024
+target times; fields are Prithvi's MERRA-2 inputs at issue time,
+deseasonalised by month x hour-of-day, in units of the model's input
+sigma). Composites: top minus bottom decile of the deseasonalised PC,
+oriented so that each reads "conditions that raise the price". Figure:
+`local/plot_fig4c_pc_composites.py` -> `results/figures/fig4c_pc_composites.png`.
+Model levels are labelled with approximate pressures (L72 surface, L63
+~850, L53 ~600, L51 ~500, L45 ~290, L44 ~250 hPa).
+
+| PC | SHAP vs value | mean SHAP, price-raising decile | linear R² from pooled 2 x 160 channels | strongest pooled correlates (deseasonalised) | composite (price-raising side) |
+|---|---|---|---|---|---|
+| PC23 | -0.71 | +$3.1/MWh | 0.36 | weak (abs r <= 0.19): mid-troposphere temperature (T ~600-500 hPa), upper U, root-zone soil wetness | cooler mid troposphere and lower 500 hPa heights over the whole region, cool surface over the Great Lakes / Quebec, northerly flow offshore: a cool trough aloft |
+| PC2 | +0.38 | +$1.6/MWh | 0.88 | north-south wind at every level over New England (r ~ +0.7), cloud and liquid water (+0.5) | deep low over and west of New England, strong southerly flow over New England and offshore, cold air with northwesterlies over the Great Lakes / Midwest: an approaching cold front |
+| PC19 | +0.84 | +$0.6/MWh | 0.21 | upper-troposphere temperature (T ~250-200 hPa, r ~ +0.3), westerly wind | warm upper troposphere (~250 hPa) over New England, southwesterly flow aloft, slightly low sea-level pressure: ridge aloft / high tropopause |
+
+Reading: the most useful components describe the large-scale pattern
+that will arrive within the next day (an approaching cold front with cold
+air upstream; a cool trough aloft), which a 24 h surface forecast at the
+New England points does not fully express. PC2 is almost entirely a
+linear function of the pooled input state, PC23 and PC19 much less so
+(spatial structure). Composites pool all seasons; the meaning of
+"southerly flow" for price likely differs between winter and summer (not
+yet split). Amplitudes are modest (0.1-0.9 sigma).
+
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
 Goal: a third rolling-origin test year, to see whether the 2023-2024 token
