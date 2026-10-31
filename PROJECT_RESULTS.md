@@ -2607,6 +2607,44 @@ GFS (significant in 2024) but do not reach the zero-spread reference.
 Possible follow-up: a median (MAE) loss instead of squared error, since
 the evaluation is MAE and the spread median is about -2.
 
+### DART on the market clock, absolute-error loss (2026-10-31)
+
+Timing of the first DART run (above): it reused the 24 h-ahead alignment
+of the price runs. Each target hour t (rounded to the nearest 3 h) took
+the GFS run at t-24 h or t-27 h (forecast hour 24/27, ignoring the 3-4 h
+publication delay) and the lead-24 Prithvi sample issued at t-24 h. Since
+the day-ahead price for day D is published about 13:30 ET on D-1, those
+features came from before the DA results for target hours before about
+13:00 and from after them for later hours: legitimate (all known before
+the real-time hour) but not the newest information at one decision time,
+and not one consistent decision time.
+
+Corrected design (`local/dart_benchmark.py`): one decision at 13:30 ET
+on D-1 for all hours of D. Day-ahead price for the hour plus D's DA daily
+mean, max and min; DART for the same hour on D-2 and D-7, on D-1 only for
+hours whose real-time hour ended by 13:00 ET (else missing), mean DART of
+D-1 00-13 ET and of D-2; Henry Hub D-1; MERRA-2 at 12 UTC D-1; GFS from
+the 12 UTC run of D-1 (the newest run published by 13:30 ET; complete
+about 15:30-16:00 UTC, the 18 UTC run only about 21:30 UTC), forecast
+hour 15-42 nearest the target (pending download: RUNS=12, FHOURS 15-42
+every 3 h); tokens = lead-24 sample issued 12 UTC D-1 (same analysis time
+as that GFS run). CatBoost with absolute-error loss.
+
+Without GFS so far (`results/dart_clock/mae_no_gfs/`), MAE $/MWh, Δ vs
+zero spread (95% week bootstrap):
+
+| model | MAE 2023 | Δ vs zero 2023 | MAE 2024 | Δ vs zero 2024 | sign right (|spread| > 5) 2023 / 2024 |
+|---|---|---|---|---|---|
+| zero spread (real time = day ahead) | **10.66** | | 10.56 | | |
+| calendar + DA + spread lags + Henry Hub | 11.13 | +0.46 [+0.18, +0.80] | 10.50 | -0.06 [-0.46, +0.30] | 0.53 / 0.60 |
+| + weather at issue | 10.93 | +0.27 [+0.03, +0.52] | 10.35 | -0.21 [-0.65, +0.20] | 0.55 / 0.59 |
+| + weather at issue + tokens | **10.61** | -0.06 [-0.33, +0.18] | **10.08** | **-0.48 [-0.92, -0.13]** | 0.57 / 0.63 |
+
+With the market clock and absolute-error loss every model is far closer
+to the zero-spread reference than before; with tokens the model beats it
+significantly in 2024 (skill +4.6%) and ties it in 2023. R² stays about
+zero. GFS comparison to follow.
+
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
 Goal: a third rolling-origin test year, to see whether the 2023-2024 token

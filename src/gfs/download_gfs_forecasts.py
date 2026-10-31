@@ -379,15 +379,18 @@ def main() -> None:
     parser.add_argument("--also-ne", action="store_true", help="Also write gfs_ne_YEAR.nc, cropped from the --box output")
     parser.add_argument("--also-crop", nargs=5, action="append", default=[], metavar=("NAME", "LAT_MIN", "LAT_MAX", "LON_MIN", "LON_MAX"),
                         help="Also write gfs_NAME_YEAR.nc cropped from the --box output (repeatable; longitudes -180..180)")
+    parser.add_argument("--runs", type=int, nargs="+", default=list(RUNS),
+                        help="Run hours (UTC) to fetch (default 0 6 12 18); e.g. --runs 12 for one run per day. A non-default "
+                             "set adds _rHH to the output names")
     parser.add_argument("--fhours", type=int, nargs="+", default=list(FHOURS),
                         help="Forecast hours to fetch (default 24 27); others get a _fHHH suffix on the output names")
     args = parser.parse_args()
     fhours = tuple(args.fhours)
-    suffix = "" if fhours == FHOURS else f"_f{min(fhours):03d}"
+    suffix = ("" if fhours == FHOURS else f"_f{min(fhours):03d}") + ("" if tuple(args.runs) == RUNS else "_r" + "".join(f"{r:02d}" for r in args.runs))
     back = max(fhours) // 24 + 2   # days before Jan 1 whose runs still reach the year
     start = pd.Timestamp(args.start or (pd.Timestamp(f"{args.year}-01-01") - pd.Timedelta(days=back)).strftime("%Y-%m-%d"))
     end = pd.Timestamp(args.end or f"{args.year}-12-31") + pd.Timedelta(hours=18)
-    runs = [r for r in pd.date_range(start, end, freq="6h") if r.hour in RUNS]
+    runs = [r for r in pd.date_range(start, end, freq="6h") if r.hour in args.runs]
     lat_range, lon_range = LAT_RANGE, LON_RANGE
     if args.box:
         lat_range, lon_range = (args.box[0], args.box[1]), (args.box[2] % 360, args.box[3] % 360)
