@@ -2556,11 +2556,11 @@ Paired Δ MAE (95% week bootstrap; relative), Uri excluded:
 Reading:
 - The ISO-NE pattern replicates. Tokens improve on GFS at every hub in
   both years (point estimates -3% to -16%), significantly in 8 of 12
-  hub-years; hub-area tokens are similar or slightly better.
+  hub-years; tokens pooled over the hub's own area are similar or
+  slightly better (significant in 10 of 12).
 - As in ISO-NE, Prithvi's own input state at issue time gets much of the
-  way (-2% to -13%), and tokens add significantly on top of it only in 4
-  of 12 hub-years (North 2023, South 2023, Panhandle 2024, and borderline
-  elsewhere).
+  way (-2% to -13%), and tokens add significantly on top of it in only 3
+  of 12 hub-years (North 2023, South 2023, Panhandle 2024).
 - The decoder (surface forecast) adds little to GFS (-8% to +6%).
 - GFS is again the largest single weather gain (-4% to -24%).
 - Everything is limited by spikes (R² 0.1-0.3); the gains are in typical
