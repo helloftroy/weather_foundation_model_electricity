@@ -2486,6 +2486,86 @@ Reading:
   target; this tests whether that state representation keeps value at
   longer horizons, not a Prithvi forecast at lead L.
 
+## ERCOT replication: day-ahead hub prices (2026-10-31)
+
+Question: does the ISO-NE result (Prithvi tokens add to GFS for day-ahead
+price) carry over to another, more weather- and renewables-sensitive
+market? First pass, no renewables, outages or event labels.
+
+Data: ERCOT DAM settlement point prices (MIS report 13060, "Historical DAM
+Load Zone and Hub Prices", yearly files, public;
+`src/ercot/download_ercot_dam_prices.py` -> `data/compact/ercot_dam_spp_YEAR.parquet`;
+Central Prevailing Time, hour ending, fall-back flag -> UTC hour beginning;
+every point has every hour). Hubs: North, Houston, South, West, Panhandle,
+hub average; one model per hub. Prithvi lead-24 run over Texas
+(`02_extract_embeddings.sbatch REGION=ercot POOLED=1`): tokens pooled
+over the ERCOT footprint (26-36.5N, 106.5-93.5W) and over each hub's area
+(North 31.5-34.5N 99-95W, Houston 28.5-31N 96.5-94W, South 26-31N
+100.5-96.5W, West 30-34N 104.5-99W, Panhandle 34-36.5N 103-100W);
+weather at issue and actual weather from the run's own pooled MERRA-2
+inputs over the hub area; decoder from its pooled output; GFS 24/27 h
+over the hub area (`gfs_texas_YEAR.nc`). Same features, lags, Henry Hub
+rule, folds and CatBoost as ISO-NE. Script: `local/ercot_price_benchmark.py`
+(`--exclude-uri` drops 2021-02-10..22 from training); outputs
+`results/ercot/{with_uri,without_uri}/`; contrasts
+`local/ercot_contrasts.py` -> `ercot_contrasts.csv`.
+
+Prices are far spikier than ISO-NE: 2023 hub median about $22 but mean
+about $56 (max about $4,200); 2024 median about $19, mean about $28 (max
+about $2,200). The top 5% of hours carry 98-99% (2023) and 77-85% (2024)
+of the squared error, so R² is low and mostly measures spikes; median
+absolute error is about $5-7.
+
+Uri: with February 2021 in training, 2024 R² is strongly negative for
+every model (-0.2 to -2.2): the model learns $9,000 cliffs and predicts
+spikes that do not come. Excluding the Uri fortnight from training is the
+main setup below (both runs saved).
+
+MAE 2023 / 2024 $/MWh (R² 2023 / 2024), Uri excluded:
+
+| model | HB_NORTH | HB_HOUSTON | HB_SOUTH | HB_WEST | HB_PAN | HB_HUBAVG |
+|---|---|---|---|---|---|---|
+| calendar + past prices + Henry Hub | 38.3 / 18.9 (0.11 / -0.34) | 38.8 / 17.2 (0.09 / -0.24) | 36.0 / 17.7 (0.10 / -0.22) | 40.5 / 23.7 (0.10 / -0.35) | 40.6 / 23.9 (0.08 / -0.42) | 37.9 / 18.7 (0.10 / -0.25) |
+| + weather at issue | 35.6 / 18.7 (0.20 / -0.26) | 36.1 / 15.2 (0.20 / -0.11) | 34.0 / 19.2 (0.17 / -0.25) | 36.6 / 19.8 (0.20 / 0.03) | 38.2 / 24.1 (0.16 / -0.14) | 34.3 / 16.5 (0.18 / 0.01) |
+| + GFS | 31.1 / 16.6 (0.28 / -0.00) | 33.4 / 14.6 (0.24 / 0.06) | 31.7 / 14.6 (0.22 / -0.02) | 31.9 / 15.9 (0.27 / 0.13) | 33.1 / 18.7 (0.21 / -0.01) | 32.1 / 14.9 (0.21 / 0.07) |
+| + GFS + decoder | 30.7 / 17.5 (0.29 / -0.06) | 32.6 / 13.4 (0.25 / 0.12) | 31.4 / 13.8 (0.24 / 0.03) | 31.5 / 15.2 (0.27 / 0.18) | 33.8 / 18.5 (0.24 / -0.03) | 31.1 / 14.4 (0.22 / 0.11) |
+| + tokens | 31.2 / 15.5 (0.24 / -0.00) | 30.8 / 14.3 (0.27 / 0.05) | 30.4 / 14.3 (0.24 / 0.03) | 33.0 / 17.1 (0.26 / 0.09) | 34.8 / 18.0 (0.23 / 0.10) | 31.7 / 15.0 (0.24 / 0.09) |
+| + GFS + tokens | 29.7 / 14.2 (0.28 / 0.16) | 30.8 / 14.1 (0.24 / 0.08) | 29.9 / 13.6 (0.25 / 0.10) | 31.0 / 15.3 (0.26 / 0.07) | 32.2 / 15.7 (0.23 / 0.17) | 29.8 / 13.8 (0.25 / 0.09) |
+| + GFS + hub-area tokens | 30.2 / 13.4 (0.29 / 0.16) | 30.3 / 13.4 (0.30 / 0.08) | 28.9 / 13.6 (0.26 / 0.05) | 30.8 / 15.2 (0.26 / 0.20) | 31.9 / 15.4 (0.24 / 0.22) | 29.8 / 13.8 (0.25 / 0.09) |
+| + GFS + input state | 30.2 / 14.4 (0.28 / 0.14) | 30.6 / 14.3 (0.26 / 0.10) | 30.9 / 14.0 (0.24 / 0.05) | 31.0 / 15.7 (0.29 / 0.13) | 32.0 / 16.6 (0.25 / 0.19) | 29.9 / 14.0 (0.27 / 0.07) |
+| + GFS + input state + tokens | 29.4 / 13.8 (0.30 / 0.15) | 30.6 / 14.3 (0.24 / 0.02) | 29.6 / 13.6 (0.24 / 0.12) | 31.0 / 16.0 (0.27 / 0.09) | 32.1 / 15.5 (0.26 / 0.23) | 29.9 / 14.2 (0.24 / 0.09) |
+| + actual weather | 32.5 / 16.6 (0.27 / 0.02) | 36.8 / 13.9 (0.26 / 0.07) | 32.9 / 14.7 (0.22 / -0.05) | 31.9 / 15.3 (0.27 / 0.18) | 32.7 / 18.2 (0.24 / 0.11) | 31.3 / 14.2 (0.20 / 0.14) |
+
+Paired Δ MAE (95% week bootstrap; relative), Uri excluded:
+
+| contrast | HB_NORTH | HB_HOUSTON | HB_SOUTH | HB_WEST | HB_PAN | HB_HUBAVG |
+|---|---|---|---|---|---|---|
+| tokens over GFS, 2023 | -1.41 [-2.59, -0.26] (-5%) | -2.57 [-3.50, -1.65] (-8%) | -1.76 [-2.91, -0.62] (-6%) | -0.95 [-1.63, -0.36] (-3%) | -0.83 [-1.97, +0.19] (-3%) | -2.27 [-3.37, -1.29] (-7%) |
+| tokens over GFS, 2024 | -2.40 [-4.47, -0.50] (-14%) | -0.56 [-1.59, +0.60] (-4%) | -1.00 [-1.95, +0.07] (-7%) | -0.61 [-1.27, +0.05] (-4%) | -3.00 [-4.40, -1.61] (-16%) | -1.06 [-1.94, -0.06] (-7%) |
+| input state over GFS, 2023 | -0.91 [-1.98, +0.25] (-3%) | -2.84 [-3.93, -1.89] (-8%) | -0.80 [-1.83, +0.36] (-3%) | -0.88 [-1.63, -0.21] (-3%) | -1.10 [-2.27, -0.10] (-3%) | -2.23 [-3.25, -1.29] (-7%) |
+| input state over GFS, 2024 | -2.22 [-3.96, -0.61] (-13%) | -0.35 [-1.50, +0.87] (-2%) | -0.63 [-1.74, +0.69] (-4%) | -0.27 [-1.12, +0.59] (-2%) | -2.12 [-3.70, -0.46] (-11%) | -0.85 [-2.06, +0.64] (-6%) |
+| tokens over GFS + input state, 2023 | -0.80 [-1.57, -0.14] (-3%) | +0.05 [-0.57, +0.71] (+0%) | -1.26 [-2.18, -0.43] (-4%) | -0.06 [-0.82, +0.67] (-0%) | +0.09 [-0.52, +0.73] (+0%) | +0.01 [-0.59, +0.81] (+0%) |
+| tokens over GFS + input state, 2024 | -0.58 [-1.37, +0.16] (-4%) | +0.01 [-0.71, +0.97] (+0%) | -0.37 [-1.09, +0.27] (-3%) | +0.36 [-0.26, +1.14] (+2%) | -1.10 [-1.65, -0.53] (-7%) | +0.16 [-0.32, +0.63] (+1%) |
+| decoder over GFS, 2023 | -0.39 [-0.81, +0.00] (-1%) | -0.82 [-1.46, -0.24] (-2%) | -0.29 [-0.82, +0.23] (-1%) | -0.46 [-0.95, +0.03] (-1%) | +0.76 [-0.10, +1.58] (+2%) | -1.03 [-1.55, -0.55] (-3%) |
+| decoder over GFS, 2024 | +0.92 [+0.29, +1.66] (+6%) | -1.18 [-2.06, -0.32] (-8%) | -0.79 [-1.46, -0.21] (-5%) | -0.72 [-1.14, -0.33] (-5%) | -0.18 [-0.89, +0.55] (-1%) | -0.46 [-0.99, +0.06] (-3%) |
+| hub-area tokens over GFS, 2023 | -0.93 [-2.07, +0.20] (-3%) | -3.14 [-5.04, -1.51] (-9%) | -2.77 [-4.15, -1.47] (-9%) | -1.08 [-1.71, -0.49] (-3%) | -1.15 [-2.45, +0.02] (-3%) | -2.27 [-3.37, -1.29] (-7%) |
+| hub-area tokens over GFS, 2024 | -3.21 [-5.20, -1.45] (-19%) | -1.27 [-2.47, -0.07] (-9%) | -1.03 [-2.05, -0.10] (-7%) | -0.77 [-1.45, -0.07] (-5%) | -3.35 [-4.79, -1.85] (-18%) | -1.06 [-1.94, -0.06] (-7%) |
+| GFS over weather at issue, 2023 | -4.43 [-6.24, -3.04] (-12%) | -2.72 [-3.61, -1.97] (-8%) | -2.29 [-3.42, -1.29] (-7%) | -4.62 [-5.66, -3.61] (-13%) | -5.15 [-6.67, -3.87] (-13%) | -2.20 [-3.49, -1.00] (-6%) |
+| GFS over weather at issue, 2024 | -2.10 [-3.33, -0.93] (-11%) | -0.60 [-1.46, +0.25] (-4%) | -4.64 [-5.92, -3.36] (-24%) | -3.89 [-5.32, -2.47] (-20%) | -5.35 [-7.01, -3.71] (-22%) | -1.69 [-2.80, -0.65] (-10%) |
+
+Reading:
+- The ISO-NE pattern replicates. Tokens improve on GFS at every hub in
+  both years (point estimates -3% to -16%), significantly in 8 of 12
+  hub-years; hub-area tokens are similar or slightly better.
+- As in ISO-NE, Prithvi's own input state at issue time gets much of the
+  way (-2% to -13%), and tokens add significantly on top of it only in 4
+  of 12 hub-years (North 2023, South 2023, Panhandle 2024, and borderline
+  elsewhere).
+- The decoder (surface forecast) adds little to GFS (-8% to +6%).
+- GFS is again the largest single weather gain (-4% to -24%).
+- Everything is limited by spikes (R² 0.1-0.3); the gains are in typical
+  hours more than in scarcity events.
+
 ## DART spread: real-time minus day-ahead hub LMP (2026-10-30)
 
 Target: hourly DART = real-time hub LMP - day-ahead hub LMP (both in
@@ -2634,11 +2714,9 @@ Done since this list was first written: 2021-2024 with year-ahead folds;
 the lead-24 forecast test against GFS; readout and component checks.
 
 Open:
-- ERCOT replication (six hubs, DAM prices 2020-2024 already in
-  `data/compact/ercot_dam_spp_YEAR.parquet`): code ready
-  (`local/ercot_price_benchmark.py`); waiting for the Texas Prithvi run
-  (REGION=ercot) and Texas GFS. Decide Uri handling: run with and
-  without `--exclude-uri`.
+- ERCOT follow-ups: regional (surrounding) weather, spike-robust loss or
+  a separate spike model, and the longer-lead test (Texas GFS at 3-7
+  days is already downloaded).
 - Upper-air control for price: done (2026-10-30, pooled input fields,
   all 160 channels). Remaining: whether the input-state gain survives
   with an operational analysis (GEOS-FP) instead of MERRA-2.
