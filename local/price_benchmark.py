@@ -176,7 +176,7 @@ def main() -> None:
     parser.add_argument("--save-shap", action="store_true",
                         help="Only GFS and GFS + tokens (PCA-50); save the token PC scores for every target time, the PCA "
                              "loadings, and per-hour SHAP values of the GFS + tokens model on the test year (shap/ in out-dir)")
-    parser.add_argument("--lead-days", type=int, default=1,
+    parser.add_argument("--lead-days", type=int, default=None,
                         help="Forecast lead in days (1, 3, 5, 7). Everything is issued L days before the target: price lags "
                              "of L, L+1 and 7 days (14 when L = 7), Henry Hub for the last trading day <= D-L, weather at the "
                              "issue time, GFS L x 24 h (or +3 h) forecast (gfs_ne_YEAR_fHHH.nc), and the lead-24 Prithvi "
@@ -201,7 +201,7 @@ def main() -> None:
         args.regional = True
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
-    L = args.lead_days
+    L = args.lead_days or 1
     H = pd.Timedelta(hours=24 * L)
     gfs_sfx, gfs_leads = ("", (24, 27)) if L == 1 else (f"_f{24 * L:03d}", (24 * L, 24 * L + 3))
     if args.dart:
@@ -370,7 +370,7 @@ def main() -> None:
     if args.dart:
         wi, G, T = "weather (issue)", "GFS area", "Prithvi tokens"
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]]
-    if L != 1:
+    if args.lead_days is not None:   # the lead comparison uses the same feature sets at every lead, lead 1 included
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
     if args.save_shap:

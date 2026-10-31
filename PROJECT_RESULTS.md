@@ -2410,6 +2410,82 @@ linear function of the pooled input state, PC23 and PC19 much less so
 "southerly flow" for price likely differs between winter and summer (not
 yet split). Amplitudes are modest (0.1-0.9 sigma).
 
+## Price at longer leads: 1, 3, 5 and 7 days ahead (2026-10-31)
+
+Question: does Prithvi become more useful relative to GFS as the lead
+grows? Same raw-LMP setup (Henry Hub known, year-ahead folds, CatBoost),
+everything issued L days before the target: price lags of L, L+1 and 7
+days (14 at L = 7) and the 24 h mean ending L days earlier; Henry Hub for
+the last trading day <= D-L; weather at the issue time; GFS forecast of
+L x 24 h (or +3 h) from the run at the issue time (AWS, forecast hours
+72/75, 120/123, 168/171, downloaded 2026-10-31 with `FHOURS`); GFS
+regional the same way; tokens = the existing lead-24 Prithvi tokens from
+the issue time (the model's own one-day-ahead state; the model is not run
+beyond its supported lead, and the encoder output depends on the
+requested lead: at the same issue time, lead-0 and lead-24 tokens
+correlate only about 0.32 per dimension). Scored on the hours usable at
+every lead (8,562 / 8,586). Script: `local/price_benchmark.py --targets
+lmp --gas-features henryhub --lead-days L --regional`; outputs
+`results/price_leads/leadL/`; summary `local/price_leads_summary.py` ->
+`results/price_leads/leads_summary.csv`.
+
+MAE $/MWh (R²), 2023:
+
+| + ... | 1 day | 3 days | 5 days | 7 days |
+|---|---|---|---|---|
+| calendar + past prices + Henry Hub | 11.67 (0.36) | 20.88 (-0.35) | 18.04 (-0.19) | 27.19 (-0.97) |
+| + weather at issue | 10.68 (0.41) | 16.60 (-0.11) | 17.78 (-0.23) | 25.24 (-0.83) |
+| + tokens | 8.54 (0.61) | 14.30 (0.10) | 15.03 (-0.04) | 18.39 (-0.35) |
+| + GFS | 8.32 (0.64) | 11.29 (0.39) | 13.82 (0.21) | 19.94 (-0.26) |
+| + GFS + tokens | 7.53 (0.69) | 10.59 (0.46) | 11.67 (0.31) | 15.67 (-0.01) |
+| + GFS + regional | 7.42 (0.70) | 10.73 (0.41) | 12.09 (0.31) | 15.63 (0.01) |
+| + GFS + regional + tokens | 7.13 (0.72) | 10.42 (0.44) | 11.44 (0.34) | 14.90 (0.08) |
+
+2024:
+
+| + ... | 1 day | 3 days | 5 days | 7 days |
+|---|---|---|---|---|
+| calendar + past prices + Henry Hub | 12.67 (0.40) | 19.89 (-0.43) | 16.21 (0.09) | 17.30 (0.00) |
+| + weather at issue | 12.09 (0.45) | 18.71 (-0.23) | 15.58 (0.11) | 16.52 (0.03) |
+| + tokens | 7.49 (0.77) | 13.38 (0.35) | 14.70 (0.19) | 14.93 (0.17) |
+| + GFS | 7.61 (0.81) | 11.45 (0.56) | 13.82 (0.37) | 14.00 (0.29) |
+| + GFS + tokens | 6.74 (0.83) | 9.43 (0.66) | 12.25 (0.44) | 13.30 (0.35) |
+| + GFS + regional | 7.62 (0.81) | 10.49 (0.64) | 12.00 (0.51) | 12.73 (0.43) |
+| + GFS + regional + tokens | 6.79 (0.83) | 9.65 (0.66) | 11.40 (0.51) | 12.67 (0.40) |
+
+(Every row except the first includes weather at issue.)
+
+Token gain, Δ MAE (95% week bootstrap; relative to the model without tokens):
+
+| | 1 day | 3 days | 5 days | 7 days |
+|---|---|---|---|---|
+| over GFS, 2023 | -0.79 [-1.23, -0.41] (-10%) | -0.70 [-1.33, -0.14] (-6%) | -2.15 [-3.49, -0.94] (-16%) | -4.28 [-5.78, -2.76] (-21%) |
+| over GFS, 2024 | -0.88 [-1.25, -0.52] (-12%) | -2.03 [-3.27, -0.93] (-18%) | -1.57 [-3.03, -0.21] (-11%) | -0.70 [-1.73, +0.25] (-5%) |
+| over GFS + regional, 2023 | -0.29 [-0.58, -0.02] (-4%) | -0.31 [-0.83, +0.21] (-3%) | -0.65 [-1.31, -0.06] (-5%) | -0.73 [-1.41, -0.03] (-5%) |
+| over GFS + regional, 2024 | -0.83 [-1.24, -0.46] (-11%) | -0.85 [-1.54, -0.18] (-8%) | -0.60 [-1.34, +0.02] (-5%) | -0.06 [-0.79, +0.61] (-0%) |
+
+GFS itself (over weather at issue): -22% / -32% / -22% / -21% (2023),
+-37% / -39% / -11% / -15% (2024).
+
+Reading:
+- Errors roughly double from 1 to 7 days; GFS remains the largest single
+  gain at every lead.
+- Over GFS alone, the token gain grows with lead in 2023 (-10% to -21%),
+  but in 2024 it peaks at 3 days and fades by 7 (not significant). So no
+  systematic increase across both years.
+- With GFS regional weather given, the token gain is a steady ~3-5% in
+  2023 at every lead, and shrinks with lead in 2024 (-11% to 0%). Much of
+  the 2023 long-lead token gain over GFS is regional information
+  (regional GFS reaches about the same MAE).
+- The baseline without weather is erratic across leads (R² below zero at
+  3 and 7 days in 2023): with stale price lags the model fits poorly, so
+  absolute and relative gains should be compared with care. The lead-1
+  rows differ slightly from the main tables because they are scored on
+  the common hours only.
+- Caveat: the tokens describe the state one day after issue, not the
+  target; this tests whether that state representation keeps value at
+  longer horizons, not a Prithvi forecast at lead L.
+
 ## DART spread: real-time minus day-ahead hub LMP (2026-10-30)
 
 Target: hourly DART = real-time hub LMP - day-ahead hub LMP (both in
@@ -2558,10 +2634,6 @@ Done since this list was first written: 2021-2024 with year-ahead folds;
 the lead-24 forecast test against GFS; readout and component checks.
 
 Open:
-- Longer leads (1, 3, 5, 7 days ahead) for ISO-NE price: code ready
-  (`price_benchmark.py --lead-days L`, lead-24 tokens from the issue
-  time); waiting for GFS f072/f120/f168 (06_download_gfs.sbatch with
-  FHOURS).
 - ERCOT replication (six hubs, DAM prices 2020-2024 already in
   `data/compact/ercot_dam_spp_YEAR.parquet`): code ready
   (`local/ercot_price_benchmark.py`); waiting for the Texas Prithvi run

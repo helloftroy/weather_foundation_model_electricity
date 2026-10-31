@@ -164,7 +164,7 @@ def main() -> None:
         y_all = s.to_numpy()
         t2m_true = hb[TR][np.clip(ti, 0, None), 0]
         for test_year in args.test_years:
-            tr = ok & (year < test_year) & (year >= min(args.years)) & ~(uri if args.exclude_uri else False)
+            tr = ok & (year < test_year) & (year >= min(args.years)) & ~(uri & args.exclude_uri)
             te = ok & (year == test_year)
             train_times = np.zeros(len(targets), bool)
             train_times[np.unique(ti[tr])] = True
