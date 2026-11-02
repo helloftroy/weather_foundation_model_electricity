@@ -132,6 +132,27 @@ def spatial_tokens(token_paths, train_times, ks):
     return out
 
 
+def other_models(X, tr, te, y):
+    """Ridge, elastic net and an MLP on the CatBoost features: hour, day of week and month one-hot, day of year as
+    sine/cosine, everything standardised on the training rows; MLP target standardised too."""
+    from sklearn.linear_model import ElasticNetCV, RidgeCV
+    from sklearn.neural_network import MLPRegressor
+    D = X.drop(columns=["hour", "day_of_week", "month", "day_of_year"])
+    D = pd.concat([D, pd.get_dummies(X["hour"], prefix="h", dtype=float), pd.get_dummies(X["day_of_week"], prefix="dow", dtype=float),
+                   pd.get_dummies(X["month"], prefix="m", dtype=float),
+                   pd.DataFrame({"doy_sin": np.sin(2 * np.pi * X["day_of_year"] / 365.25), "doy_cos": np.cos(2 * np.pi * X["day_of_year"] / 365.25)},
+                                index=X.index)], axis=1).astype(float).to_numpy()
+    mu, sd = D[tr].mean(0), D[tr].std(0) + 1e-9
+    D = (D - mu) / sd
+    ym, ys = y[tr].mean(), y[tr].std()
+    out = {"ridge": RidgeCV(alphas=np.logspace(-2, 4, 13)).fit(D[tr], y[tr]).predict(D[te])}
+    out["elastic net"] = ElasticNetCV(l1_ratio=[0.1, 0.5, 0.9], n_alphas=30, cv=5, max_iter=5000, n_jobs=-1).fit(D[tr], y[tr]).predict(D[te])
+    mlp = MLPRegressor(hidden_layer_sizes=(128, 64), alpha=1e-3, early_stopping=True, validation_fraction=0.15, max_iter=500,
+                       random_state=7).fit(D[tr], (y[tr] - ym) / ys)
+    out["MLP"] = mlp.predict(D[te]) * ys + ym
+    return out
+
+
 def residual_head(model, X, tr, te, y_fit, df, Z, args, train_dir, n_folds=5):
     """Out-of-fold residuals of the conventional model on the training rows (folds = interleaved calendar months), then
     ridge and MLP heads on the token PCs alone to predict them; returns each head's correction for the test rows."""
@@ -219,6 +240,10 @@ def main() -> None:
                              "trained on the GFS model's out-of-fold training residuals (5 interleaved month folds within the "
                              "training years). Compared with CatBoost given GFS and tokens jointly. With --regional also over "
                              "GFS + GFS regional.")
+    parser.add_argument("--other-models", action="store_true",
+                        help="Also fit ridge, elastic net and an MLP on the same features as CatBoost (calendar one-hot / "
+                             "cyclic, everything standardised on training rows), for GFS and GFS + tokens (with --regional also "
+                             "GFS + regional, with and without tokens)")
     args = parser.parse_args()
     if args.dart and args.targets != ["lmp"]:
         raise SystemExit("--dart needs --targets lmp")
@@ -404,6 +429,9 @@ def main() -> None:
     if args.lead_days is not None:   # the lead comparison uses the same feature sets at every lead, lead 1 included
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
+    if args.other_models:
+        wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
+        combos = [[wi, G], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
     if args.residual_head:
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
         combos = [[wi, G], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
@@ -496,6 +524,19 @@ def main() -> None:
                                 "rmse": float(np.sqrt((err ** 2).mean())), "n_test_hours": int(te.sum())})
                 print(f"  {name:75s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
                 pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)
+                if args.other_models:
+                    for fam, pred_o in other_models(X, tr, te, y_fit).items():
+                        price_o = pred_o * df[f"N_{target}"].to_numpy()[te]
+                        err_o = price_o - lmp_all[te]
+                        name_o = name + f" [{fam}]"
+                        all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name_o,
+                                                       "actual": lmp_all[te], "pred": price_o, "week": week[te],
+                                                       "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                        results.append({"target": target, "test_year": test_year, "feature_set": name_o, "mae": float(np.abs(err_o).mean()),
+                                        "r2": float(1 - (err_o ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum()),
+                                        "median_ae": float(np.median(np.abs(err_o))), "rmse": float(np.sqrt((err_o ** 2).mean())),
+                                        "n_test_hours": int(te.sum())})
+                        print(f"  {name_o:75s} MAE ${results[-1]['mae']:6.2f}   R2 {results[-1]['r2']:5.2f}", flush=True)
                 if args.residual_head and "Prithvi tokens" not in combo:
                     for head_name, correction in residual_head(model, X, tr, te, y_fit, df, blocks["Prithvi tokens"][np.clip(ti, 0, None)],
                                                                args, str(args.out_dir / "catboost_info")).items():

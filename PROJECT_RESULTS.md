@@ -2681,7 +2681,31 @@ zero spread (95% week bootstrap):
 With the market clock and absolute-error loss every model is far closer
 to the zero-spread reference than before; with tokens the model beats it
 significantly in 2024 (skill +4.6%) and ties it in 2023. R² stays about
-zero. GFS comparison to follow.
+zero.
+
+With GFS (12 UTC run of D-1, `data/gfs/gfs_ne_YEAR_f015_r12.nc`;
+`results/dart_clock/mae/`, log `results/dart_clock_mae.log`; slightly
+fewer hours since GFS lacks 2021-01-01):
+
+| model | MAE 2023 | Δ vs zero 2023 | MAE 2024 | Δ vs zero 2024 |
+|---|---|---|---|---|
+| zero spread | 10.66 | | 10.56 | |
+| calendar + DA + spread lags + Henry Hub | 10.95 | +0.28 [-0.03, +0.66] | 10.25 | -0.31 [-0.84, +0.15] |
+| + weather at issue | 10.79 | +0.13 [-0.13, +0.41] | 10.23 | -0.33 [-0.78, +0.08] |
+| + GFS | 10.74 | +0.08 [-0.18, +0.37] | 10.43 | -0.13 [-0.58, +0.27] |
+| + tokens | 10.66 | -0.00 [-0.24, +0.21] | **9.95** | **-0.60 [-1.07, -0.25]** |
+| + GFS + tokens | **10.62** | -0.04 [-0.27, +0.16] | 10.10 | **-0.46 [-0.85, -0.14]** |
+
+Paired (95% week bootstrap): GFS over weather at issue -0.05 [-0.19,
++0.09] / +0.20 [-0.05, +0.45]; tokens over weather at issue -0.13 [-0.45,
++0.16] / -0.28 [-0.59, +0.02]; tokens on top of GFS -0.12 [-0.46, +0.18]
+/ -0.32 [-0.64, +0.00]; tokens vs GFS -0.08 [-0.39, +0.20] / **-0.47
+[-0.83, -0.14]**.
+
+Reading: GFS adds nothing to the spread forecast (the day-ahead market has
+already priced the weather forecast in). Tokens are the only weather
+input that beats "real time = day ahead", and only in 2024 (skill +4-6%);
+in 2023 nothing beats it. Small effects, near the edge of significance.
 
 ## Price: another rolling-origin test year (2022) (2026-10-29)
 
