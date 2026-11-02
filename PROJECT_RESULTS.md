@@ -2629,6 +2629,51 @@ Reading:
 - Everything is limited by spikes (R² 0.1-0.3); the gains are in typical
   hours more than in scarcity events.
 
+### ERCOT: robust training losses with Uri kept (2026-11-02)
+
+Can the model learn ordinary price behaviour without deleting a real
+extreme? Same ERCOT setup, February 2021 kept in training, CatBoost
+trained with absolute error or Huber (δ = $50/MWh, about the 90th
+percentile of North Hub's absolute deviation from its median in 2021-22),
+main feature sets only (`ercot_price_benchmark.py --main-only --loss
+MAE` / `--loss Huber:delta=50`; `results/ercot/with_uri_MAE/`,
+`results/ercot/with_uri_Huber_delta_50/`).
+
+Mean over the six hubs, MAE / median absolute error / R², 2023 and 2024:
+
+| training | features | MAE 2023 / 2024 | median AE | R² |
+|---|---|---|---|---|
+| squared error, Uri out | GFS | 32.2 / 15.9 | 6.5 / 5.6 | 0.24 / 0.04 |
+| | GFS + tokens | **30.6 / 14.5** | 5.4 / 5.5 | 0.25 / 0.11 |
+| | GFS + input state | 30.8 / 14.8 | 5.4 / 5.5 | 0.26 / 0.11 |
+| squared error, Uri in | GFS | 33.0 / 19.0 | 7.0 / 5.7 | 0.29 / -0.75 |
+| | GFS + tokens | 32.5 / 17.3 | 6.4 / 6.0 | 0.37 / -1.21 |
+| | GFS + input state | 32.1 / 17.4 | 6.4 / 6.0 | 0.42 / -0.21 |
+| absolute error, Uri in | GFS | 33.6 / 37.4 | 5.7 / 5.1 | 0.18 / -18.9 |
+| | GFS + tokens | 35.0 / 35.7 | 5.5 / 5.1 | 0.26 / -16.2 |
+| | GFS + input state | 36.7 / 30.2 | 6.1 / 5.4 | 0.20 / -8.7 |
+| Huber $50, Uri in | GFS | 31.7 / 17.8 | 6.1 / 5.7 | 0.26 / -0.58 |
+| | GFS + tokens | **30.1** / 16.2 | 5.7 / 5.5 | 0.36 / -0.35 |
+| | GFS + input state | 30.5 / 15.9 | 5.7 / 5.5 | 0.36 / -0.15 |
+
+- Absolute-error training makes 2024 far worse. During Uri prices stayed
+  at the $9,000 cap for days, so the conditional median after a very high
+  price was the cap; the median model learns that persistence rule and,
+  after real 2024 spikes, predicts $4,600-7,300 the next day (actual
+  $100-2,000). On North Hub 2024 (GFS model), 60 hours carry 94% of the
+  squared error; median errors are fine (about $5).
+- Huber is the best way to keep Uri: in 2023 it matches or beats dropping
+  Uri (30.1 vs 30.6 with tokens), but in 2024 it is still worse (16.2 vs
+  14.5) and R² stays negative. A robust loss reduces, but does not remove,
+  the damage: the problem is not outlier weighting but a persistence rule
+  learned under 2021's market rules (offer cap $9,000; $5,000 from 2022).
+- Token gain over GFS under Huber with Uri kept: negative at 11 of 12
+  hub-years (-2% to -17%), significant at 5 (North 2024, Houston 2023,
+  South 2023 and 2024, Panhandle 2024). The replication holds under this
+  training choice too.
+- Not yet tried: the offer cap as a known regime feature, and a
+  gas-scaled target.
+
 ## DART spread: real-time minus day-ahead hub LMP (2026-10-30)
 
 Target: hourly DART = real-time hub LMP - day-ahead hub LMP (both in
