@@ -83,6 +83,11 @@ def main() -> None:
     parser.add_argument("--loss", default="RMSE",
                         help="CatBoost training loss: RMSE (default), MAE, Quantile:alpha=0.5, Huber:delta=D (squared within "
                              "D $/MWh of the target, linear beyond: learns ordinary hours without letting $9,000 hours dominate)")
+    parser.add_argument("--offer-cap", choices=["none", "feature", "scaled"], default="none",
+                        help="ERCOT's system-wide offer cap (known in advance: $9,000 for delivery days before 2022-01-01, "
+                             "$5,000 from then on). 'feature': add it as a column; 'scaled': model price / cap (the price "
+                             "lags divided by the cap in force at their own time) and multiply predictions back for scoring")
+    parser.add_argument("--gfs-only", action="store_true", help="Only GFS and GFS + tokens (with weather at issue)")
     parser.add_argument("--main-only", action="store_true",
                         help="Only the main feature sets: base, + weather, + GFS, + tokens, + GFS + tokens, + GFS + input "
                              "state, + GFS + input state + tokens")
@@ -156,9 +161,16 @@ def main() -> None:
               [wi, G, IS, T], [wi, TR]]
     if args.main_only:
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T], [wi, G, IS], [wi, G, IS, T]]
+    if args.gfs_only:
+        combos = [[wi, G], [wi, G, T]]
+    cap_of = lambda local_times: np.where(pd.DatetimeIndex(local_times) < pd.Timestamp("2022-01-01"), 9000.0, 5000.0)  # noqa: E731
+    df["ercot_offer_cap"] = cap_of(df["timestamp_local"])
+    extra_cols = ["ercot_offer_cap"] if args.offer_cap == "feature" else []
     results, all_preds = [], []
     for hub in args.hubs:
         s = wide[hub]
+        if args.offer_cap == "scaled":
+            s = s / cap_of(local.to_numpy())          # every price on the scale of the cap in force at its own time
         lag_cols = []
         for k, d in LAGS.items():
             df[f"past__{k}"] = s.reindex(df["timestamp"] - d).to_numpy()
@@ -169,7 +181,9 @@ def main() -> None:
         ok = (ti >= 0) & df[lag_cols].notna().all(axis=1).to_numpy() & df["gas_known_henryhub"].notna().to_numpy() & s.notna().to_numpy()
         for v in hb.values():
             ok &= ~np.isnan(v[np.clip(ti, 0, None)]).any(axis=1)
-        y_all = s.to_numpy()
+        y_fit = s.to_numpy()
+        scale = df["ercot_offer_cap"].to_numpy() if args.offer_cap == "scaled" else np.ones(len(df))
+        y_all = y_fit * scale                       # $/MWh, for scoring
         t2m_true = hb[TR][np.clip(ti, 0, None), 0]
         for test_year in args.test_years:
             tr = ok & (year < test_year) & (year >= min(args.years)) & ~(uri & args.exclude_uri)
@@ -184,21 +198,22 @@ def main() -> None:
             print(f"\n[{hub}, test {test_year}] train {tr.sum()} h, test {te.sum()} h; test price mean ${y_all[te].mean():.2f}, "
                   f"median ${np.median(y_all[te]):.2f}, max ${y_all[te].max():.0f}", flush=True)
             for combo in combos:
-                X = df[CALENDAR + lag_cols + ["gas_known_henryhub"]].copy()
+                X = df[CALENDAR + lag_cols + ["gas_known_henryhub"] + extra_cols].copy()
                 for b in combo:
                     w = fb[b].shape[1]
                     cols = [f"{b}_{n}" for n in (NAMES if w == len(NAMES) else range(w))]
                     X = pd.concat([X, pd.DataFrame(fb[b][np.clip(ti, 0, None)], columns=cols, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
                                           loss_function=args.loss, thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
-                model.fit(Pool(X[tr], y_all[tr]))
-                pred = model.predict(X[te])
+                model.fit(Pool(X[tr], y_fit[tr]))
+                pred = model.predict(X[te]) * scale[te]
                 err = pred - y_all[te]
                 name = "calendar + past prices + Henry Hub" + "".join(f" + {b}" for b in combo)
                 r2 = float(1 - (err ** 2).sum() / ((y_all[te] - y_all[te].mean()) ** 2).sum())
                 results.append({"hub": hub, "test_year": test_year, "feature_set": name, "mae": float(np.abs(err).mean()),
                                 "median_ae": float(np.median(np.abs(err))), "r2": r2, "rmse": float(np.sqrt((err ** 2).mean())),
-                                "n_test_hours": int(te.sum()), "exclude_uri": args.exclude_uri, "loss": args.loss})
+                                "n_test_hours": int(te.sum()), "exclude_uri": args.exclude_uri, "loss": args.loss,
+                                "offer_cap": args.offer_cap})
                 all_preds.append(pd.DataFrame({"row": np.where(te)[0], "hub": hub, "test_year": test_year, "feature_set": name,
                                                "actual": y_all[te], "pred": pred, "week": week[te],
                                                "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))

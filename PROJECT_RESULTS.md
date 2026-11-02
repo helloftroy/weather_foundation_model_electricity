@@ -2671,8 +2671,40 @@ Mean over the six hubs, MAE / median absolute error / R², 2023 and 2024:
   hub-years (-2% to -17%), significant at 5 (North 2024, Houston 2023,
   South 2023 and 2024, Panhandle 2024). The replication holds under this
   training choice too.
-- Not yet tried: the offer cap as a known regime feature, and a
-  gas-scaled target.
+
+Offer cap (2026-11-02): ERCOT's system-wide offer cap is known in advance
+($9,000 for delivery days before 2022-01-01, $5,000 from then on). Two
+versions, squared error, Uri kept, GFS and GFS + tokens only
+(`ercot_price_benchmark.py --gfs-only --offer-cap feature|scaled`;
+`results/ercot/with_uri_cap_{feature,scaled}/`): the cap as a feature,
+and the target divided by the cap (price lags divided by the cap in force
+at their own time; predictions multiplied back for scoring).
+
+| training (Uri kept unless noted) | features | MAE 2023 / 2024 | R² 2023 / 2024 |
+|---|---|---|---|
+| squared, Uri dropped | GFS | 32.2 / 15.9 | 0.24 / 0.04 |
+| | GFS + tokens | 30.6 / **14.5** | 0.25 / **0.11** |
+| squared | GFS | 33.0 / 19.0 | 0.29 / -0.75 |
+| | GFS + tokens | 32.5 / 17.3 | 0.37 / -1.21 |
+| squared + cap feature | GFS | 33.5 / 18.3 | 0.30 / -0.68 |
+| | GFS + tokens | 32.5 / 17.2 | 0.37 / -0.99 |
+| squared, cap-scaled target | GFS | 31.8 / 18.1 | 0.24 / -0.89 |
+| | GFS + tokens | 31.3 / 16.5 | 0.28 / -0.83 |
+| Huber $50 | GFS + tokens | **30.1** / 16.2 | 0.36 / -0.35 |
+
+(Mean over the six hubs.) Neither cap version fixes 2024: R² stays
+negative at every hub. Likely reason: 2021 is the only year under the
+$9,000 cap, so in training the cap is just a 2021 indicator, and the Uri
+hours are already separated by the price lags themselves; the trees have
+no reason to route the "spike persists at the cap" rule through the cap
+rather than the lags, so it still fires after 2024 spikes. Rescaling by
+the cap leaves the persistence pattern intact. Not tuned further (no
+Huber run on top), as planned. Token gain over GFS with the cap-scaled
+target: negative at 10 of 12 hub-years, significant at 5 (North, Houston,
+South, Panhandle, hub average, all 2024).
+
+Conclusion for ERCOT: drop the Uri fortnight from training for the main
+results; keeping it with Huber loss is the best robustness check.
 
 ## DART spread: real-time minus day-ahead hub LMP (2026-10-30)
 
