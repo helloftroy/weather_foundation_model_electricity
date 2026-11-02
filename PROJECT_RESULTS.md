@@ -2524,6 +2524,31 @@ correction cannot. Possible variants (not run): the residual in heat-rate
 units (divided by Henry Hub) and multiplied back, and shrinkage of the
 correction tuned by a time-ordered validation split.
 
+### Other model families on the same features (2026-11-02)
+
+Ridge (penalty by CV), elastic net (l1 ratio 0.1/0.5/0.9, CV) and an MLP
+(128-64, L2 1e-3, early stopping) on exactly the CatBoost features
+(calendar as one-hot hour, day of week and month plus day-of-year
+sine/cosine; standardised on training rows). Script: `price_benchmark.py
+--targets lmp --gas-features henryhub --other-models --regional`; outputs
+`results/price_other_models/`.
+
+MAE $/MWh (R²), 2023 / 2024:
+
+| features | CatBoost | ridge | elastic net | MLP |
+|---|---|---|---|---|
+| GFS | 8.41 / 7.60 (0.63 / 0.81) | 9.96 / 9.63 (0.62 / 0.72) | 9.75 / 9.30 (0.61 / 0.72) | 10.19 / 9.10 (0.61 / 0.74) |
+| GFS + tokens | **7.55 / 6.74 (0.69 / 0.83)** | 10.89 / 9.86 (0.61 / 0.72) | 10.09 / 9.55 (0.58 / 0.73) | 10.50 / 9.46 (0.59 / 0.68) |
+| GFS + regional | 7.42 / 7.58 (0.70 / 0.80) | 10.36 / 9.71 (0.62 / 0.73) | 10.09 / 9.40 (0.62 / 0.74) | 9.87 / 9.41 (0.63 / 0.74) |
+| GFS + regional + tokens | **7.13 / 6.78 (0.72 / 0.83)** | 11.04 / 9.88 (0.61 / 0.73) | 10.18 / 9.66 (0.61 / 0.74) | 11.72 / 9.26 (0.56 / 0.75) |
+
+CatBoost is far better than every alternative (by $1.5-4/MWh), and only
+CatBoost turns the tokens into a gain: for ridge, elastic net and the MLP
+adding tokens makes MAE worse (+0.2 to +1.9) except the MLP over GFS +
+regional in 2024 (-0.15). Same message as the residual head: the token
+information is usable through interactions with the price drivers, not
+additively. Dropped.
+
 ## ERCOT replication: day-ahead hub prices (2026-10-31)
 
 Question: does the ISO-NE result (Prithvi tokens add to GFS for day-ahead

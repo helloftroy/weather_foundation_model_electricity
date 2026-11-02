@@ -551,6 +551,7 @@ def main() -> None:
                                         "median_ae": float(np.median(np.abs(err_h))), "rmse": float(np.sqrt((err_h ** 2).mean())),
                                         "n_test_hours": int(te.sum())})
                         print(f"  {name_h:75s} MAE ${results[-1]['mae']:6.2f}   R2 {results[-1]['r2']:5.2f}", flush=True)
+    pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)   # incl. rows added after the last write
     preds = pd.concat(all_preds, ignore_index=True)
     preds.to_parquet(args.out_dir / "price_predictions.parquet", index=False)
     ref = "calendar + past values" + (" + known gas" if gas_cols else "") + " + weather (issue) + GFS area"
