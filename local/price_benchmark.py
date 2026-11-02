@@ -132,6 +132,31 @@ def spatial_tokens(token_paths, train_times, ks):
     return out
 
 
+def residual_head(model, X, tr, te, y_fit, df, Z, args, train_dir, n_folds=5):
+    """Out-of-fold residuals of the conventional model on the training rows (folds = interleaved calendar months), then
+    ridge and MLP heads on the token PCs alone to predict them; returns each head's correction for the test rows."""
+    from sklearn.linear_model import RidgeCV
+    from sklearn.neural_network import MLPRegressor
+    lt = df["timestamp_local"]
+    month_id = (lt.dt.year * 12 + lt.dt.month).to_numpy()
+    fold = pd.Series(month_id).rank(method="dense").astype(int).to_numpy() % n_folds
+    oof = np.full(len(df), np.nan)
+    for k in range(n_folds):
+        fit, out = tr & (fold != k), tr & (fold == k)
+        m = CatBoostRegressor(**{**model.get_params(), "train_dir": train_dir})
+        m.fit(Pool(X[fit], y_fit[fit]))
+        oof[out] = m.predict(X[out])
+    r = y_fit[tr] - oof[tr]
+    mu, sd = Z[tr].mean(0), Z[tr].std(0) + 1e-6
+    Zs = (Z - mu) / sd
+    rs = r.std()
+    ridge = RidgeCV(alphas=np.logspace(-1, 5, 13)).fit(Zs[tr], r)
+    mlp = MLPRegressor(hidden_layer_sizes=(64,), alpha=1e-1, early_stopping=True, validation_fraction=0.15, max_iter=500,
+                       random_state=7).fit(Zs[tr], r / rs)
+    print(f"    residual head: out-of-fold residual sd {rs:.2f}; ridge alpha {ridge.alpha_:.3g}; MLP stopped after {mlp.n_iter_} epochs", flush=True)
+    return {"ridge": ridge.predict(Zs[te]), "MLP": mlp.predict(Zs[te]) * rs}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--years", type=int, nargs="+", default=[2021, 2022, 2023, 2024])
@@ -188,6 +213,12 @@ def main() -> None:
                              "before the real-time hour, so the day-ahead price for the hour is a feature; weather, GFS and "
                              "tokens keep their 24 h-ahead alignment (known by then, conservatively stale); spread lags start "
                              "at 25 h (the latest real-time hour surely known). Use with --targets lmp.")
+    parser.add_argument("--residual-head", action="store_true",
+                        help="Residual token head: the GFS model (calendar + past values + gas + weather at issue + GFS) as is, "
+                             "plus a correction predicted from the tokens alone (50 PCs) by ridge regression or a small MLP, "
+                             "trained on the GFS model's out-of-fold training residuals (5 interleaved month folds within the "
+                             "training years). Compared with CatBoost given GFS and tokens jointly. With --regional also over "
+                             "GFS + GFS regional.")
     args = parser.parse_args()
     if args.dart and args.targets != ["lmp"]:
         raise SystemExit("--dart needs --targets lmp")
@@ -373,6 +404,9 @@ def main() -> None:
     if args.lead_days is not None:   # the lead comparison uses the same feature sets at every lead, lead 1 included
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
+    if args.residual_head:
+        wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "Prithvi tokens"
+        combos = [[wi, G], [wi, G, T]] + ([[wi, G, R], [wi, G, R, T]] if args.regional else [])
     if args.save_shap:
         combos = [["weather (issue)", "GFS area"], ["weather (issue)", "GFS area", "Prithvi tokens"]]
     if args.input_control:
@@ -462,6 +496,20 @@ def main() -> None:
                                 "rmse": float(np.sqrt((err ** 2).mean())), "n_test_hours": int(te.sum())})
                 print(f"  {name:75s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
                 pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)
+                if args.residual_head and "Prithvi tokens" not in combo:
+                    for head_name, correction in residual_head(model, X, tr, te, y_fit, df, blocks["Prithvi tokens"][np.clip(ti, 0, None)],
+                                                               args, str(args.out_dir / "catboost_info")).items():
+                        price_h = (pred + correction) * df[f"N_{target}"].to_numpy()[te]
+                        err_h = price_h - lmp_all[te]
+                        name_h = name + f" + token residual head ({head_name})"
+                        all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name_h,
+                                                       "actual": lmp_all[te], "pred": price_h, "week": week[te],
+                                                       "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                        results.append({"target": target, "test_year": test_year, "feature_set": name_h, "mae": float(np.abs(err_h).mean()),
+                                        "r2": float(1 - (err_h ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum()),
+                                        "median_ae": float(np.median(np.abs(err_h))), "rmse": float(np.sqrt((err_h ** 2).mean())),
+                                        "n_test_hours": int(te.sum())})
+                        print(f"  {name_h:75s} MAE ${results[-1]['mae']:6.2f}   R2 {results[-1]['r2']:5.2f}", flush=True)
     preds = pd.concat(all_preds, ignore_index=True)
     preds.to_parquet(args.out_dir / "price_predictions.parquet", index=False)
     ref = "calendar + past values" + (" + known gas" if gas_cols else "") + " + weather (issue) + GFS area"

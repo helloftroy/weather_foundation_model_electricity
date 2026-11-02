@@ -2486,6 +2486,44 @@ Reading:
   target; this tests whether that state representation keeps value at
   longer horizons, not a Prithvi forecast at lead L.
 
+## Price: residual token head vs CatBoost with tokens (2026-11-02)
+
+Question: what can Prithvi correct that the conventional forecast misses?
+Instead of giving CatBoost GFS and tokens together: (1) the conventional
+CatBoost model (calendar + past prices + Henry Hub + weather at issue +
+GFS, optionally + GFS regional); (2) its out-of-fold training residuals
+(5 folds of interleaved calendar months within the training years; the
+in-sample residuals of a boosted model are shrunk); (3) a head on the 50
+token PCs alone (standardised) predicting those residuals: ridge (penalty
+by internal CV, chosen 316-1,000) or an MLP (one hidden layer of 64,
+L2 0.1, early stopping); prediction = conventional model fitted on all
+training years + head. Raw LMP, Henry Hub known, same folds. Script:
+`local/price_benchmark.py --targets lmp --gas-features henryhub
+--residual-head --regional`; outputs `results/price_residual_head/`.
+
+MAE $/MWh (R²), 2023 / 2024:
+
+| | over GFS | over GFS + regional |
+|---|---|---|
+| conventional model | 8.41 / 7.60 (0.63 / 0.81) | 7.42 / 7.58 (0.70 / 0.80) |
+| + token residual head, ridge | 10.51 / 8.53 (0.58 / 0.79) | 8.88 / 8.38 (0.68 / 0.79) |
+| + token residual head, MLP | 16.92 / 14.55 (0.21 / 0.58) | 15.13 / 14.85 (0.37 / 0.55) |
+| CatBoost with tokens jointly | **7.55 / 6.74 (0.69 / 0.83)** | **7.13 / 6.78 (0.72 / 0.83)** |
+
+Both heads make every model worse. Diagnosis on the test year: the head's
+correction does point the right way (correlation with the conventional
+model's test residual +0.02 to +0.15) but is far too large: the
+least-squares best scale for it is 0.07-0.36 (ridge) and 0.03-0.09 (MLP).
+The out-of-fold training residuals (sd 17-21 $/MWh) are larger and differ
+in kind from test residuals (sd 13-16): they carry regime errors (e.g.
+2022's gas-driven prices), and a token-only additive head learns those
+level corrections, which do not transfer. CatBoost given tokens jointly
+can instead use them in interaction with gas price, hour and temperature
+(price responds multiplicatively to gas), which an additive token-only
+correction cannot. Possible variants (not run): the residual in heat-rate
+units (divided by Henry Hub) and multiplied back, and shrinkage of the
+correction tuned by a time-ordered validation split.
+
 ## ERCOT replication: day-ahead hub prices (2026-10-31)
 
 Question: does the ISO-NE result (Prithvi tokens add to GFS for day-ahead

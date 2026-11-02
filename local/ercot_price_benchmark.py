@@ -80,6 +80,12 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--iterations", type=int, default=3000)
     parser.add_argument("--exclude-uri", action="store_true", help=f"Drop local days {URI[0]}..{URI[1]} from training")
+    parser.add_argument("--loss", default="RMSE",
+                        help="CatBoost training loss: RMSE (default), MAE, Quantile:alpha=0.5, Huber:delta=D (squared within "
+                             "D $/MWh of the target, linear beyond: learns ordinary hours without letting $9,000 hours dominate)")
+    parser.add_argument("--main-only", action="store_true",
+                        help="Only the main feature sets: base, + weather, + GFS, + tokens, + GFS + tokens, + GFS + input "
+                             "state, + GFS + input state + tokens")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
@@ -148,6 +154,8 @@ def main() -> None:
     wi, G, D, T, TA, IS, TR = "weather (issue)", "GFS area", "Prithvi area", "Prithvi tokens", "tokens hub area", "input state", "true area"
     combos = [[], [wi], [wi, G], [wi, D], [wi, G, D], [wi, T], [wi, G, T], [wi, G, D, T], [wi, G, TA], [wi, IS], [wi, G, IS],
               [wi, G, IS, T], [wi, TR]]
+    if args.main_only:
+        combos = [[], [wi], [wi, G], [wi, T], [wi, G, T], [wi, G, IS], [wi, G, IS, T]]
     results, all_preds = [], []
     for hub in args.hubs:
         s = wide[hub]
@@ -182,7 +190,7 @@ def main() -> None:
                     cols = [f"{b}_{n}" for n in (NAMES if w == len(NAMES) else range(w))]
                     X = pd.concat([X, pd.DataFrame(fb[b][np.clip(ti, 0, None)], columns=cols, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
-                                          thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
+                                          loss_function=args.loss, thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
                 model.fit(Pool(X[tr], y_all[tr]))
                 pred = model.predict(X[te])
                 err = pred - y_all[te]
@@ -190,7 +198,7 @@ def main() -> None:
                 r2 = float(1 - (err ** 2).sum() / ((y_all[te] - y_all[te].mean()) ** 2).sum())
                 results.append({"hub": hub, "test_year": test_year, "feature_set": name, "mae": float(np.abs(err).mean()),
                                 "median_ae": float(np.median(np.abs(err))), "r2": r2, "rmse": float(np.sqrt((err ** 2).mean())),
-                                "n_test_hours": int(te.sum()), "exclude_uri": args.exclude_uri})
+                                "n_test_hours": int(te.sum()), "exclude_uri": args.exclude_uri, "loss": args.loss})
                 all_preds.append(pd.DataFrame({"row": np.where(te)[0], "hub": hub, "test_year": test_year, "feature_set": name,
                                                "actual": y_all[te], "pred": pred, "week": week[te],
                                                "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
