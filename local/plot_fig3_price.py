@@ -24,8 +24,8 @@ G, R = "GFS area", "GFS area + GFS regional"
 PANELS = {
     "A": [("GFS", G), ("+ tokens\nNew England", G + " + tokens ne"), ("+ tokens\nNortheast", G + " + tokens northeast"),
           ("+ tokens\nwide box", G + " + tokens wide")],
-    "B": [("GFS +\nregional", R), ("+ tokens", R + " + tokens ne"), ("+ input\nstate", R + " + MERRA-2 fields ne"),
-          ("+ input state\n+ tokens", R + " + MERRA-2 fields ne + tokens ne")],
+    "B": [("GFS +\nregional", R), ("+ tokens", R + " + tokens ne"), ("+ full\natmospheric\nstate", R + " + MERRA-2 fields ne"),
+          ("+ state\n+ tokens", R + " + MERRA-2 fields ne + tokens ne")],
 }
 Y23, Y24 = "#1f4e9c", "#d9822b"
 
@@ -47,6 +47,7 @@ for panel, models in PANELS.items():
                          "MAE": h["ae"].mean(), "dMAE_vs_first": m, "lo": lo, "hi": hi})
 t = pd.DataFrame(rows)
 
+METRIC = sys.argv[1] if len(sys.argv) > 1 else "R2"  # "R2" (fig3_price) or "MAE" (fig3_price_mae)
 fig = plt.figure(figsize=(7.2, 6.4))
 outer = fig.add_gridspec(2, 1, height_ratios=[1, 1.05], hspace=0.42)
 top = outer[0].subgridspec(1, 2, wspace=0.12)
@@ -65,9 +66,9 @@ def tidy(ax, label):
 for ax, (panel, models) in zip(axes, PANELS.items()):
     x = np.arange(len(models))
     for y, color, marker in ((2023, Y23, "o"), (2024, Y24, "s")):
-        v = t[(t["panel"] == panel) & (t["test_year"] == y)].set_index("feature_set").loc[[m[1] for m in models], "R2"].to_numpy()
-        ax.plot(x[:2], v[:2], color=color, lw=1.6, zorder=2)  # the added step
-        ax.plot(x[1:], v[1:], color=color, lw=1.0, ls=(0, (1.5, 2)), zorder=2)  # alternatives, not further steps
+        v = t[(t["panel"] == panel) & (t["test_year"] == y)].set_index("feature_set").loc[[m[1] for m in models], METRIC].to_numpy()
+        # Unconnected points: every column is an alternative added to the first; a thin line marks the baseline level.
+        ax.axhline(v[0], color=color, lw=0.7, ls=(0, (3, 2)), alpha=0.6, zorder=1)
         ax.scatter(x, v, s=34, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.6)
         ax.text(x[-1] + 0.18, v[-1], str(y), color=color, va="center", ha="left", fontsize=8, fontweight="bold")
     ax.set_xticks(x)
@@ -75,8 +76,12 @@ for ax, (panel, models) in zip(axes, PANELS.items()):
     ax.set_xlim(-0.35, len(models) - 0.35)
     ax.grid(axis="y", color="#ececec", lw=0.6, zorder=0)
     tidy(ax, panel)
-axes[0].set_ylabel("ISO-NE out-of-sample R²\n(hourly day-ahead price)")
-axes[0].set_ylim(0.6, 0.86)
+if METRIC == "R2":
+    axes[0].set_ylabel("ISO-NE out-of-sample R²\n(hourly day-ahead price)")
+    axes[0].set_ylim(0.6, 0.86)
+else:
+    axes[0].set_ylabel("ISO-NE MAE, $/MWh\n(hourly day-ahead price)")
+    axes[0].set_ylim(6.4, 8.8)
 
 # C, D: % MAE reduction from adding tokens to GFS (positive = tokens help), each relative to its own GFS model.
 B_TX = "calendar + past prices + Henry Hub + weather (issue) + GFS area"
@@ -113,6 +118,8 @@ for y, color, marker, off in ((2023, Y23, "o", -0.15), (2024, Y24, "s", 0.15)):
     axc.scatter(d["gain_pct"], yy, s=30, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.6, label=str(y))
 axc.axhline(len(HUBS) - 1 - 0.2, color="#cccccc", lw=0.6)
 axc.axvline(0, color="#555555", lw=0.8, zorder=2.5)
+axc.text(0, 1.01, "no token benefit", transform=axc.get_xaxis_transform(), ha="center", va="bottom", fontsize=6,
+         color="#555555")
 axc.set_yticks(list(ypos.values()))
 axc.set_yticklabels(list(ypos.keys()))
 axc.invert_yaxis()
@@ -121,21 +128,21 @@ axc.grid(axis="x", color="#ececec", lw=0.6, zorder=0)
 axc.legend(frameon=False, fontsize=7.5, loc="lower right", handletextpad=0.2, borderaxespad=0.1)
 tidy(axc, "C")
 
-axd = fig.add_subplot(bottom[1].subgridspec(2, 1, height_ratios=[1, 0.55])[0], sharex=axc)
+axd = fig.add_subplot(bottom[1].subgridspec(2, 1, height_ratios=[1, 0.12])[0], sharex=axc)
 groups = [("ISO-NE", "Internal hub", "ISO-NE"), ("ERCOT", "Hub average", "ERCOT\nhub average")]
 for i, (mk, hub, _) in enumerate(groups):
     for y, color, marker, off in ((2023, Y23, "o", -0.15), (2024, Y24, "s", 0.15)):
         r = mt[(mt["market"] == mk) & (mt["hub"] == hub) & (mt["test_year"] == y)].iloc[0]
-        axd.hlines(i + off, r["gain_lo"], r["gain_hi"], color=color, lw=1.2, zorder=2)
-        axd.scatter(r["gain_pct"], i + off, s=30, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.6)
+        axd.hlines(i + off, r["gain_lo"], r["gain_hi"], color=color, lw=1.5, zorder=2)
+        axd.scatter(r["gain_pct"], i + off, s=38, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.6)
 axd.axvline(0, color="#555555", lw=0.8, zorder=2.5)
 axd.set_yticks(range(len(groups)))
 axd.set_yticklabels([g[2] for g in groups])
-axd.set_ylim(len(groups) - 0.5, -0.5)
+axd.set_ylim(len(groups) - 0.4, -0.6)
 axd.set_xlabel("MAE reduction from adding\nPrithvi tokens to GFS (%)")
 axd.grid(axis="x", color="#ececec", lw=0.6, zorder=0)
 tidy(axd, "D")
-out = root / "results/figures/fig3_price"
+out = root / ("results/figures/fig3_price" + ("" if METRIC == "R2" else "_mae"))
 fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
 fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
 t.drop(columns="feature_set").to_csv(root / "results/figures/fig3_price_table.csv", index=False)
