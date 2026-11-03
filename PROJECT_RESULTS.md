@@ -3016,3 +3016,74 @@ Open:
   the decoder / token gain is shortwave.
 - Optionally, a longer record (more test years) to firm up hard-day
   results, which rest on few days (2023 has 4 cold-snap days).
+
+## Where the token gain happens: weather regimes defined in advance (2026-11-03)
+
+Script `local/price_gain_by_regime.py` -> `results/price_regimes/gain_by_regime.csv`.
+Each local target day gets a regime from the same 24 h-ahead GFS 2 m
+temperature forecasts the models see (ISO-NE: mean of the eight load-zone
+grid points; ERCOT: mean over the four load-hub boxes). Thresholds come
+from each fold's training years. Priority order:
+- **cold:** forecast daily mean <= 10th percentile;
+- **hot:** forecast daily max >= 90th percentile;
+- **ramp:** |change in forecast daily mean from the day before| >= 90th
+  percentile;
+- **normal:** everything else.
+
+Thresholds: ISO-NE cold <= -3.5 / -2.4 C, hot >= 27.5 / 27.2 C, ramp >= 5.3 / 4.9 K
+(test 2023 / 2024); ERCOT cold <= 9.2 / 9.8 C, hot >= 35.3 / 36.4 C, ramp >= 3.9 K.
+ΔMAE = tokens minus baseline ($/MWh; 95% week-block bootstrap); "gain
+share" = share of the year's total MAE reduction.
+
+ISO-NE hub, tokens over GFS:
+
+| regime | 2023 hours | 2023 ΔMAE | 2023 % / gain share | 2024 hours | 2024 ΔMAE | 2024 % / gain share |
+|---|---|---|---|---|---|---|
+| cold | 240 (3%) | -3.69 [-6.41, +0.26] | 7% / 12% | 1,008 (12%) | **-2.98 [-4.92, -1.00]** | 17% / 41% |
+| hot | 720 (8%) | -0.71 [-1.80, +0.52] | 7% / 7% | 1,128 (13%) | -0.82 [-1.98, +0.57] | 7% / 13% |
+| ramp | 432 (5%) | +0.06 [-1.98, +2.23] | -1% / 0% | 384 (4%) | +0.10 [-1.06, +1.25] | -1% / -1% |
+| normal | 7,314 (84%) | **-0.84 [-1.38, -0.36]** | 12% / 82% | 6,210 (71%) | **-0.55 [-0.85, -0.27]** | 10% / 47% |
+
+ISO-NE hub, tokens over GFS + regional:
+
+| regime | 2023 ΔMAE | 2023 % / gain share | 2024 ΔMAE | 2024 % / gain share |
+|---|---|---|---|---|
+| cold | **-3.43 [-4.66, -2.25]** | 7% / 57% | **-2.41 [-4.19, -0.32]** | 14% / 31% |
+| hot | +0.16 [-0.27, +0.58] | -2% / -8% | **-2.26 [-4.12, -0.33]** | 18% / 32% |
+| ramp | +0.56 [-0.51, +1.44] | -7% / -17% | +0.06 [-0.66, +0.92] | -1% / 0% |
+| normal | -0.13 [-0.36, +0.08] | 2% / 68% | **-0.47 [-0.66, -0.31]** | 9% / 37% |
+
+ERCOT hub average, tokens over GFS (Uri out of training):
+
+| regime | 2023 hours | 2023 ΔMAE | 2023 % / gain share | 2024 hours | 2024 ΔMAE | 2024 % / gain share |
+|---|---|---|---|---|---|---|
+| cold | 624 (7%) | **-2.43 [-4.76, -0.28]** | 21% / 8% | 528 (6%) | +2.97 [-1.79, +8.22] | -11% / -17% |
+| hot | 1,920 (22%) | **-4.75 [-8.38, -0.89]** | 5% / 46% | 552 (6%) | **-6.05 [-8.58, -1.50]** | 16% / 36% |
+| ramp | 672 (8%) | **-1.69 [-2.66, -0.82]** | 19% / 6% | 456 (5%) | +0.86 [-0.48, +2.58] | -12% / -4% |
+| normal | 5,490 (63%) | **-1.45 [-2.07, -0.86]** | 12% / 40% | 7,194 (82%) | **-1.10 [-1.87, -0.38]** | 9% / 85% |
+
+Reading:
+- **ISO-NE: the largest dollar gains are on forecast-cold days.**
+  - Tokens over GFS, 2024: cold days are 12% of hours but carry 41% of
+    the gain (17% lower MAE).
+  - Against the stricter GFS + regional baseline, cold days are the only
+    regime with a clear gain in both years: 2023 -3.43 (57% of the gain
+    from 3% of hours) and 2024 -2.41.
+  - 2023 had few cold days (a mild winter, 10 days), so its cold-day
+    interval is wide.
+- **ERCOT: the gain sits on forecast-hot days** (2023: 46% of the gain;
+  2024: 36%), not cold ones. 2024 cold days are slightly worse
+  (n.s.).
+- **Ramp days (large day-to-day temperature swings) show no gain in
+  either market, except ERCOT 2023.** Tokens do not specifically help
+  with fronts as defined by a daily-mean swing.
+- **Gains on normal days are smaller in % for ISO-NE but steady**
+  (about 10%), and they account for much of the total because normal
+  days are most hours.
+- **Interpretation:** the token gain concentrates in each market's
+  weather-stressed regime. That is winter cold in pipeline-constrained
+  New England, where gas sets the marginal price and cold days bring
+  gas spikes, and summer heat in ERCOT, where scarcity pricing happens.
+  The gas link for ISO-NE is consistent with this but not yet tested
+  directly; a direct test would split cold-day gains by the Algonquin
+  minus Henry Hub basis.
