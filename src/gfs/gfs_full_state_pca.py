@@ -8,7 +8,8 @@ components come from the training Gram matrix. All samples are projected on each
 
 Output (small, to copy to the local data/gfs/): gfs_full_state_features.npz with run_time, lead_hours, valid_time,
 names, ne_mean and northeast_mean (box means [sample, 150]), grid_pc_2023 / grid_pc_2024 [sample, 50] and the variance
-fraction each keeps.
+fraction each keeps. Also gfs_full_state_patch_grid.npy [sample, 150, 8, 7]: the fields averaged over Prithvi's 8 x 7
+token patches (1 deg lat x 1.25 deg lon from 40 N, 75 W), same sample order, for the spatial readout heads.
 """
 import argparse
 from pathlib import Path
@@ -49,6 +50,19 @@ def main():
         out[f"grid_pc_{test}"] = scores
         out[f"grid_frac_{test}"] = np.float32(w[:args.k].sum() / w.sum())
         print(f"test {test}: basis from {tr.sum()} training forecasts; {args.k} PCs keep {w[:args.k].sum() / w.sum():.1%}", flush=True)
+    lat, lon = metas[0]["ne_lat"], metas[0]["ne_lon"]
+    bi = np.clip(np.floor(lat - 40.0).astype(int), 0, 7)
+    bj = np.clip(np.floor((lon + 75.0) / 1.25).astype(int), 0, 6)
+    patch = np.lib.format.open_memmap(args.dir / "gfs_full_state_patch_grid.npy", mode="w+", dtype=np.float32, shape=(len(X), n_f, 8, 7))
+    start = 0
+    for g in grids:
+        for i in range(0, len(g), 500):
+            a = np.asarray(g[i:i + 500], np.float32)
+            for pi in range(8):
+                for pj in range(7):
+                    patch[start + i:start + i + len(a), :, pi, pj] = a[:, :, bi == pi][:, :, :, bj == pj].mean(axis=(2, 3))
+        start += len(g)
+    patch.flush()
     np.savez(args.dir / "gfs_full_state_features.npz", **out)
     print(f"Wrote {args.dir / 'gfs_full_state_features.npz'}: {len(X)} forecasts, {good.sum()} complete", flush=True)
 

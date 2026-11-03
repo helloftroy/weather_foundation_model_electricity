@@ -153,6 +153,20 @@ def other_models(X, tr, te, y):
     return out
 
 
+def oof_predictions(model, X, tr, y_fit, df, train_dir, n_folds=5):
+    """Out-of-fold predictions of the conventional model on the training rows (folds = interleaved calendar months)."""
+    lt = df["timestamp_local"]
+    month_id = (lt.dt.year * 12 + lt.dt.month).to_numpy()
+    fold = pd.Series(month_id).rank(method="dense").astype(int).to_numpy() % n_folds
+    oof = np.full(len(df), np.nan)
+    for k in range(n_folds):
+        fit, out = tr & (fold != k), tr & (fold == k)
+        m = CatBoostRegressor(**{**model.get_params(), "train_dir": train_dir})
+        m.fit(Pool(X[fit], y_fit[fit]))
+        oof[out] = m.predict(X[out])
+    return oof, fold
+
+
 def residual_head(model, X, tr, te, y_fit, df, Z, args, train_dir, n_folds=5):
     """Out-of-fold residuals of the conventional model on the training rows (folds = interleaved calendar months), then
     ridge and MLP heads on the token PCs alone to predict them; returns each head's correction for the test rows."""
@@ -221,6 +235,18 @@ def main() -> None:
                              "box means (50 PCs fitted on training times, like the MERRA-2 fields) and as gridded PCA-50 (one "
                              "basis per fold). Compared with tokens ne and the MERRA-2 fields, alone and with the tokens, on top "
                              "of GFS and of GFS + GFS regional")
+    parser.add_argument("--sample-efficiency", type=int, nargs="*", default=None, metavar="MONTHS",
+                        help="Sample efficiency: GFS, GFS + tokens ne and GFS + MERRA-2 fields ne (raw-state PCA-50) trained "
+                             "on N months of labelled hours (default 3 6 12 24): the N most recent months before the test year, "
+                             "and --se-draws random sets of N whole months from the training years. PCA bases are fitted on all "
+                             "training-year times (unlabelled) as usual. Model names get a ' [train recent Nm]' / "
+                             "' [train random Nm dK]' tag; untagged = all training months")
+    parser.add_argument("--se-draws", type=int, default=5)
+    parser.add_argument("--export-residuals", action="store_true",
+                        help="For the spatial readout heads (local/spatial_head.py): fit GFS and GFS + GFS regional, and save "
+                             "per test year the hourly rows with their 3-hourly target-time index, the out-of-fold training "
+                             "predictions (5 interleaved month folds), the test predictions, actuals, weeks, calendar and GFS "
+                             "area features (residuals_{year}_{base}.npz in out-dir)")
     parser.add_argument("--upper-air-split", action="store_true",
                         help="Split Prithvi's 160 input channels over New England into the 20 surface channels and the "
                              "140 upper-air channels (10 variables x 14 model levels), 50 PCs each (all 20 surface), "
@@ -253,14 +279,16 @@ def main() -> None:
     args = parser.parse_args()
     if args.dart and args.targets != ["lmp"]:
         raise SystemExit("--dart needs --targets lmp")
-    if args.upper_air_split or args.gfs_full:
+    if args.sample_efficiency is not None and not args.sample_efficiency:
+        args.sample_efficiency = [3, 6, 12, 24]
+    if args.upper_air_split or args.gfs_full or args.sample_efficiency:
         args.pooled_extents = True
     gfull = np.load(args.gfs_full) if args.gfs_full else None
     if args.pooled_extents:
         args.regional = True
     if args.placebo:
         args.regional = True
-    if args.pc_sweep is not None:
+    if args.pc_sweep is not None or args.export_residuals:
         args.regional = True
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
@@ -441,6 +469,11 @@ def main() -> None:
         Fb, Fg = "GFS full state box", "GFS full state grid"
         extra = [[T], [M], [Fb], [Fg], [Fb, T], [Fg, T]]
         combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
+    if args.export_residuals:
+        combos = [["weather (issue)", "GFS area"], ["weather (issue)", "GFS area", "GFS regional"]]
+    if args.sample_efficiency:
+        wi, G = "weather (issue)", "GFS area"
+        combos = [[wi, G], [wi, G, "tokens ne"], [wi, G, "MERRA-2 fields ne"]]
     if args.upper_air_split:
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "tokens ne"
         extra = [[T], ["surface fields ne"], ["upper-air fields ne"], ["MERRA-2 fields ne"],
@@ -501,6 +534,18 @@ def main() -> None:
         hard = hard_day_labels(df["timestamp_local"], t2m_true, tr)
         print(f"  hard days (test {test_year}): thresholds {hard.attrs['thresholds_K']}; "
               f"{hard.loc[te, 'cold_snap'].sum()} cold-snap and {hard.loc[te, 'heat_wave'].sum()} heat-wave test hours", flush=True)
+        subsets = [("", tr)]
+        if args.sample_efficiency:
+            month = df["timestamp_local"].dt.to_period("M").to_numpy()
+            pool = sorted(set(month[tr]))
+            for n in args.sample_efficiency:
+                if n >= len(pool):
+                    continue
+                subsets.append((f" [train recent {n}m]", tr & np.isin(month, pool[-n:])))
+                for d in range(args.se_draws):
+                    pick = np.random.default_rng(test_year * 1000 + n * 10 + d).choice(len(pool), n, replace=False)
+                    subsets.append((f" [train random {n}m d{d}]", tr & np.isin(month, [pool[i] for i in pick])))
+            print(f"  sample efficiency: {len(pool)} training months; {len(subsets)} training sets", flush=True)
         for target in args.targets:
             y_fit = df[f"y_{target}"].to_numpy()
             print(f"\n[{target}, test {test_year}, train {min(args.years)}-{test_year - 1}] train {tr.sum()} h, test {te.sum()} h; "
@@ -510,46 +555,58 @@ def main() -> None:
                 for b in combo:
                     names = [f"{b}_{n}" for n in (NAMES if blocks[b].shape[1] == len(NAMES) else range(blocks[b].shape[1]))]
                     X = pd.concat([X, pd.DataFrame(blocks[b][np.clip(ti, 0, None)], columns=names, index=df.index)], axis=1)
-                model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
-                                          thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
-                model.fit(Pool(X[tr], y_fit[tr]))
-                pred = model.predict(X[te])
-                if args.save_shap and "Prithvi tokens" in combo:
-                    sd = args.out_dir / "shap"
-                    sd.mkdir(exist_ok=True)
-                    sv = model.get_feature_importance(Pool(X[te], y_fit[te]), type="ShapValues")  # [n, features + 1]
-                    pd.DataFrame(sv[:, :-1], columns=X.columns).assign(timestamp=df["timestamp"].to_numpy()[te]).to_parquet(
-                        sd / f"shap_{target}_{test_year}.parquet", index=False)
-                    raw = sys_blocks["Prithvi tokens (raw)"]
-                    Tr = raw[train_times].astype(np.float64)
-                    mu, sdv = Tr.mean(0), Tr.std(0)
-                    sdv[sdv == 0] = 1
-                    _, _, vt = np.linalg.svd((Tr - mu) / sdv, full_matrices=False)
-                    np.savez(sd / f"token_pcs_{test_year}.npz", scores=blocks["Prithvi tokens"], targets=targets.values.astype("datetime64[ns]"),
-                             loadings=vt[:50].astype(np.float32), mu=mu.astype(np.float32), sd=sdv.astype(np.float32), train_times=train_times)
-                price = pred * df[f"N_{target}"].to_numpy()[te]
-                err = price - lmp_all[te]
-                mae = float(np.abs(err).mean())
-                r2 = float(1 - (err ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum())
-                name = "calendar + past values" + (" + known gas" if gas_cols else "") + "".join(f" + {b}" for b in combo)
-                if args.dart and combo == []:   # reference: no spread expected (real time = day ahead)
-                    zero = np.zeros(te.sum())
-                    all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target,
-                                                   "feature_set": "zero spread (real time = day ahead)", "actual": lmp_all[te],
-                                                   "pred": zero, "week": week[te], "cold_snap": hard["cold_snap"].to_numpy()[te],
-                                                   "heat_wave": hard["heat_wave"].to_numpy()[te]}))
-                    results.append({"target": target, "test_year": test_year, "feature_set": "zero spread (real time = day ahead)",
-                                    "mae": float(np.abs(lmp_all[te]).mean()), "median_ae": float(np.median(np.abs(lmp_all[te]))),
-                                    "r2": float(1 - (lmp_all[te] ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum()),
-                                    "rmse": float(np.sqrt((lmp_all[te] ** 2).mean())), "n_test_hours": int(te.sum())})
-                all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name,
-                                               "actual": lmp_all[te], "pred": price, "week": week[te],
-                                               "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
-                results.append({"target": target, "test_year": test_year, "feature_set": name, "mae": mae, "r2": r2,
-                                "median_ae": float(np.median(np.abs(err))),
-                                "rmse": float(np.sqrt((err ** 2).mean())), "n_test_hours": int(te.sum())})
-                print(f"  {name:75s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
-                pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)
+                for sub_tag, tr_fit in subsets:
+                    model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
+                                              thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
+                    model.fit(Pool(X[tr_fit], y_fit[tr_fit]))
+                    pred = model.predict(X[te])
+                    if args.export_residuals:
+                        oof, mfold = oof_predictions(model, X, tr_fit, y_fit, df, str(args.out_dir / "catboost_info"))
+                        tag = "gfs_regional" if "GFS regional" in combo else "gfs"
+                        test_pred = np.full(len(df), np.nan)
+                        test_pred[te] = pred
+                        np.savez(args.out_dir / f"residuals_{test_year}_{tag}.npz", ti=ti, tr=tr_fit, te=te, y=y_fit,
+                                 n=df[f"N_{target}"].to_numpy(), oof=oof, month_fold=mfold, test_pred=test_pred, week=week,
+                                 timestamp=df["timestamp"].to_numpy(), targets=targets.values, context_names=np.array(CALENDAR + gas_cols),
+                                 context=X[CALENDAR + gas_cols].to_numpy(float), gfs_area=blocks["GFS area"][np.clip(ti, 0, None)])
+                        print(f"    exported residuals ({tag}): out-of-fold residual MAE {np.nanmean(np.abs(y_fit[tr_fit] - oof[tr_fit])):.2f}", flush=True)
+                    if args.save_shap and "Prithvi tokens" in combo:
+                        sd = args.out_dir / "shap"
+                        sd.mkdir(exist_ok=True)
+                        sv = model.get_feature_importance(Pool(X[te], y_fit[te]), type="ShapValues")  # [n, features + 1]
+                        pd.DataFrame(sv[:, :-1], columns=X.columns).assign(timestamp=df["timestamp"].to_numpy()[te]).to_parquet(
+                            sd / f"shap_{target}_{test_year}.parquet", index=False)
+                        raw = sys_blocks["Prithvi tokens (raw)"]
+                        Tr = raw[train_times].astype(np.float64)
+                        mu, sdv = Tr.mean(0), Tr.std(0)
+                        sdv[sdv == 0] = 1
+                        _, _, vt = np.linalg.svd((Tr - mu) / sdv, full_matrices=False)
+                        np.savez(sd / f"token_pcs_{test_year}.npz", scores=blocks["Prithvi tokens"], targets=targets.values.astype("datetime64[ns]"),
+                                 loadings=vt[:50].astype(np.float32), mu=mu.astype(np.float32), sd=sdv.astype(np.float32), train_times=train_times)
+                    price = pred * df[f"N_{target}"].to_numpy()[te]
+                    err = price - lmp_all[te]
+                    mae = float(np.abs(err).mean())
+                    r2 = float(1 - (err ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum())
+                    name = "calendar + past values" + (" + known gas" if gas_cols else "") + "".join(f" + {b}" for b in combo) + sub_tag
+                    if args.dart and combo == []:   # reference: no spread expected (real time = day ahead)
+                        zero = np.zeros(te.sum())
+                        all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target,
+                                                       "feature_set": "zero spread (real time = day ahead)", "actual": lmp_all[te],
+                                                       "pred": zero, "week": week[te], "cold_snap": hard["cold_snap"].to_numpy()[te],
+                                                       "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                        results.append({"target": target, "test_year": test_year, "feature_set": "zero spread (real time = day ahead)",
+                                        "mae": float(np.abs(lmp_all[te]).mean()), "median_ae": float(np.median(np.abs(lmp_all[te]))),
+                                        "r2": float(1 - (lmp_all[te] ** 2).sum() / ((lmp_all[te] - lmp_all[te].mean()) ** 2).sum()),
+                                        "rmse": float(np.sqrt((lmp_all[te] ** 2).mean())), "n_test_hours": int(te.sum())})
+                    all_preds.append(pd.DataFrame({"row": np.where(te)[0], "test_year": test_year, "target": target, "feature_set": name,
+                                                   "actual": lmp_all[te], "pred": price, "week": week[te],
+                                                   "cold_snap": hard["cold_snap"].to_numpy()[te], "heat_wave": hard["heat_wave"].to_numpy()[te]}))
+                    results.append({"target": target, "test_year": test_year, "feature_set": name, "mae": mae, "r2": r2,
+                                    "median_ae": float(np.median(np.abs(err))),
+                                    "rmse": float(np.sqrt((err ** 2).mean())), "n_test_hours": int(te.sum()),
+                                    "n_train_hours": int(tr_fit.sum())})
+                    print(f"  {name:75s} MAE ${mae:6.2f}   R2 {r2:5.2f}", flush=True)
+                    pd.DataFrame(results).to_csv(args.out_dir / "price_comparison.csv", index=False)
                 if args.other_models:
                     for fam, pred_o in other_models(X, tr, te, y_fit).items():
                         price_o = pred_o * df[f"N_{target}"].to_numpy()[te]

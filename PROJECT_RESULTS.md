@@ -633,6 +633,17 @@ done
 
 ## Price: still to do
 
+- **Spatial readout heads (2026-11-03, code ready, not run).** Equal-capacity
+  test of the representation: tokens, MERRA-2 input fields and (once
+  downloaded) the full GFS state, each on Prithvi's 8 x 7 patch grid, reduced
+  to 64 numbers per patch by one shared PCA basis, then the same conv or
+  attention head (grid vs patch-mean view), trained on out-of-fold residuals
+  of the CatBoost GFS model; a context-only head as control. Needs torch in
+  the .venv (`.venv/bin/pip install torch`). Steps: `local/price_benchmark.py
+  --targets lmp --gas-features henryhub --export-residuals --out-dir
+  results/regional/spatial_head`, then `local/spatial_head.py --residuals-dir
+  results/regional/spatial_head` (add `--reps none tokens merra gfs_full`
+  and `--base gfs_regional` as wanted).
 - **Full-GFS-state control (2026-11-03, code ready, waiting on the cluster
   download).** Reviewer question: do 50 PCs of the full GFS forecast state
   over New England match the tokens? 150 fields (HGT, TMP, RH, VVEL, U, V,
