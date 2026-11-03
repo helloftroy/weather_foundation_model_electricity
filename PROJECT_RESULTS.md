@@ -633,6 +633,18 @@ done
 
 ## Price: still to do
 
+- **Full-GFS-state control (2026-11-03, code ready, waiting on the cluster
+  download).** Reviewer question: do 50 PCs of the full GFS forecast state
+  over New England match the tokens? 150 fields (HGT, TMP, RH, VVEL, U, V,
+  cloud water, cloud ice, cloud cover on 14 pressure levels mirroring
+  Prithvi's, plus 25 single-level fields), 0.5 deg, 24/27 h forecasts,
+  as box means (PCA-50, like the MERRA-2 fields) and gridded PCA-50 (one
+  basis per fold). Steps: `cluster/sbatch/service/09_download_gfs_full_state.sbatch`
+  per year, then `cluster/sbatch/cpu_morrill/08_gfs_full_state_pca.sbatch`;
+  copy `gfs_full_state_features.npz` to `data/gfs/`; run
+  `local/price_benchmark.py --targets lmp --gas-features henryhub --gfs-full
+  data/gfs/gfs_full_state_features.npz --out-dir results/regional/price_gfs_full`,
+  then `local/gfs_full_contrasts.py`.
 - Prithvi feature sets, once finite embeddings are back.
 - Predicted (not actual) demand as a feature, with out-of-sample
   predictions for the training rows.

@@ -215,6 +215,12 @@ def main() -> None:
                              "wide box 32-50N 90-64W, and the five outside regions together), and the upper-air control "
                              "(Prithvi's own 160 input fields, and its decoder output, averaged over New England and the "
                              "wide box), each 50 PCs fitted on training times; on top of GFS and of GFS + GFS regional")
+    parser.add_argument("--gfs-full", type=Path, default=None,
+                        help="Full-GFS-state control: gfs_full_state_features.npz (src/gfs/gfs_full_state_pca.py): the GFS 24-27 h "
+                             "forecast of 150 fields (9 variables x 14 pressure levels + 25 single-level) over New England, as "
+                             "box means (50 PCs fitted on training times, like the MERRA-2 fields) and as gridded PCA-50 (one "
+                             "basis per fold). Compared with tokens ne and the MERRA-2 fields, alone and with the tokens, on top "
+                             "of GFS and of GFS + GFS regional")
     parser.add_argument("--upper-air-split", action="store_true",
                         help="Split Prithvi's 160 input channels over New England into the 20 surface channels and the "
                              "140 upper-air channels (10 variables x 14 model levels), 50 PCs each (all 20 surface), "
@@ -247,8 +253,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.dart and args.targets != ["lmp"]:
         raise SystemExit("--dart needs --targets lmp")
-    if args.upper_air_split:
+    if args.upper_air_split or args.gfs_full:
         args.pooled_extents = True
+    gfull = np.load(args.gfs_full) if args.gfs_full else None
     if args.pooled_extents:
         args.regional = True
     if args.placebo:
@@ -331,6 +338,17 @@ def main() -> None:
             for e in ("ne", "wide"):
                 year_blocks[f"MERRA-2 fields {e} (raw)"] = at_targets(pooled["inputs"][:, ext.index(e)])
                 year_blocks[f"decoder fields {e} (raw)"] = at_targets(pooled["recon"][:, ext.index(e)])
+        if gfull is not None:   # the 24 h forecast valid at each target, else the 27 h one (as for GFS area)
+            vt, gl = pd.DatetimeIndex(gfull["valid_time"]), gfull["lead_hours"]
+            gpick = np.full(len(t), -1)
+            for want in gfs_leads[::-1]:
+                ix = pd.Series(np.where(gl == want)[0], index=vt[gl == want])
+                gp = ix[~ix.index.duplicated()].reindex(t).to_numpy()
+                gpick[~np.isnan(gp)] = gp[~np.isnan(gp)].astype(int)
+            take = lambda a: np.where((gpick >= 0)[:, None], a[np.clip(gpick, 0, None)], np.nan).astype(np.float32)  # noqa: E731
+            year_blocks["GFS full state box (raw)"] = take(gfull["ne_mean"])
+            for ty in args.test_years:
+                year_blocks[f"GFS full state grid@{ty}"] = take(gfull[f"grid_pc_{ty}"])
         token_paths.append((args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24.npy", pos))
         if args.input_control:
             inp = box_pixels(args.prithvi_dir / f"prithvi_tokens_ne_{y}_lead24_inputs.npy")
@@ -418,6 +436,11 @@ def main() -> None:
         extra = [[v] for v in extra] + [["MERRA-2 fields ne", "tokens ne"], ["MERRA-2 fields wide", "tokens wide"],
                                         ["MERRA-2 fields wide", "tokens ne"]]
         combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
+    if args.gfs_full:
+        wi, G, R, T, M = "weather (issue)", "GFS area", "GFS regional", "tokens ne", "MERRA-2 fields ne"
+        Fb, Fg = "GFS full state box", "GFS full state grid"
+        extra = [[T], [M], [Fb], [Fg], [Fb, T], [Fg, T]]
+        combos = [[wi, G], [wi, G, R]] + [[wi, G] + v for v in extra] + [[wi, G, R] + v for v in extra]
     if args.upper_air_split:
         wi, G, R, T = "weather (issue)", "GFS area", "GFS regional", "tokens ne"
         extra = [[T], ["surface fields ne"], ["upper-air fields ne"], ["MERRA-2 fields ne"],
@@ -451,7 +474,10 @@ def main() -> None:
         tr, te = ok & (year < test_year) & (year >= min(args.years)), ok & (year == test_year)
         train_times = np.zeros(len(targets), bool)
         train_times[np.unique(ti[tr])] = True
-        blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)")}
+        blocks = {k: v for k, v in sys_blocks.items() if not k.endswith(" (raw)") and "@" not in k}
+        if args.gfs_full:
+            blocks["GFS full state grid"] = sys_blocks[f"GFS full state grid@{test_year}"]
+            print(f"  GFS full state grid: 50 PCs keep {float(gfull[f'grid_frac_{test_year}']):.1%} of the variance", flush=True)
         blocks["Prithvi tokens"], frac = pca(sys_blocks["Prithvi tokens (raw)"], train_times, 50)
         print(f"  pooled tokens: 50 PCs keep {frac:.1%} of the (standardised) variance", flush=True)
         if args.placebo:
