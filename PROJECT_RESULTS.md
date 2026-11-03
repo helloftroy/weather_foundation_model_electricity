@@ -3111,6 +3111,56 @@ Reading:
   directly; a direct test would split cold-day gains by the Algonquin
   minus Henry Hub basis.
 
+### Sample efficiency: tokens vs the raw state with fewer labels (2026-11-03)
+
+Question: do the tokens pull ahead of a PCA of the raw state when labelled
+data are scarce (the usual promise of a foundation model)? ISO-NE hub LMP,
+Henry Hub known, year-ahead test years, CatBoost with fixed settings. Three
+arms on top of calendar + past prices + gas + old weather: GFS; + Prithvi
+tokens (New England, PCA-50); + raw state (Prithvi's 160 MERRA-2 input
+channels over New England, PCA-50). Trained on N labelled months: random N
+whole months from the training years (5 draws; hourly errors averaged over
+draws) or the N most recent months. PCA bases always use all training-year
+times (unlabelled). Script: `local/price_benchmark.py --targets lmp
+--gas-features henryhub --sample-efficiency`; summary
+`local/sample_efficiency_summary.py` -> `results/regional/price_sample_efficiency/sample_efficiency.csv`,
+`results/figures/sample_efficiency.png`.
+
+Random months, ΔMAE $/MWh (95% week bootstrap; negative = first better):
+
+| test | months | MAE GFS / state / tokens | tokens − GFS | state − GFS | tokens − state | draws tokens < state |
+|---|---|---|---|---|---|---|
+| 2023 | 3 | 12.55 / 12.46 / 12.29 | -0.26 [-0.56, +0.02] | -0.09 [-0.31, +0.13] | -0.17 [-0.35, -0.00] | 2/5 |
+| 2023 | 6 | 11.35 / 11.47 / 11.14 | -0.21 [-0.49, +0.08] | +0.12 [-0.10, +0.34] | **-0.33 [-0.53, -0.14]** | 3/5 |
+| 2023 | 12 | 9.31 / 8.67 / 8.71 | -0.59 [-0.96, -0.24] | -0.64 [-1.03, -0.28] | +0.04 [-0.18, +0.26] | 2/5 |
+| 2023 | 24 (all) | 8.41 / 7.68 / 7.54 | -0.87 [-1.39, -0.41] | -0.73 [-1.20, -0.31] | -0.14 [-0.42, +0.16] | |
+| 2024 | 3 | 15.29 / 14.51 / 15.56 | +0.26 [-0.08, +0.59] | **-0.78 [-1.16, -0.40]** | **+1.04 [+0.75, +1.33]** | 2/5 |
+| 2024 | 6 | 9.15 / 8.98 / 8.80 | -0.35 [-0.64, -0.04] | -0.18 [-0.47, +0.14] | **-0.17 [-0.32, -0.03]** | 4/5 |
+| 2024 | 12 | 9.38 / 8.51 / 8.29 | -1.09 [-1.53, -0.68] | -0.87 [-1.32, -0.49] | **-0.22 [-0.45, -0.02]** | 4/5 |
+| 2024 | 24 | 8.15 / 7.48 / 7.30 | -0.85 [-1.19, -0.52] | -0.67 [-0.93, -0.43] | -0.18 [-0.38, +0.02] | 4/5 |
+| 2024 | 36 (all) | 7.60 / 7.09 / 6.77 | -0.83 [-1.23, -0.44] | -0.51 [-0.86, -0.18] | **-0.32 [-0.60, -0.08]** | |
+
+Most recent months, tokens − state: 2023 +0.50 / +1.93 / +1.29 at 3 / 6 /
+12 months (state better; these windows are late 2022, the gas-price spike);
+2024 +0.10 / +0.18 / -0.20 / -0.46 at 3 / 6 / 12 / 24 (n.s. until 24).
+
+- **No few-label advantage for the tokens.** Their gain over GFS grows
+  with data (about 0-2% at 3 months, 10-11% at 24-36), the same shape as
+  the raw state's. With 3 months the tokens give nothing reliable over GFS
+  and in 2024 are significantly worse than the raw state (+1.04).
+- **The token-over-state edge appears from about 6 months** of
+  seasonally spread labels (significant at 6 months in both years and at
+  12 and 36 months in 2024), but not reliably with recent contiguous
+  windows, where the raw state is as good or better.
+- Reading: the tokens are a richer but higher-dimensional-in-effect
+  representation that the tree model needs enough varied labels to use;
+  they are not a sample-efficient shortcut. Do not claim a label-efficiency
+  benefit.
+
+Caveats: one CatBoost configuration for all sizes (3000 iterations, no
+tuning for small data; same for every arm); PCA-50 in both arms; 5 draws;
+the most-recent design confounds length with season and the 2022 gas regime.
+
 ### Cold-day token gain vs the gas basis (2026-11-03)
 
 Question: among ISO-NE forecast-cold days, is the token gain larger when

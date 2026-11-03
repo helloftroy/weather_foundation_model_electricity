@@ -60,7 +60,7 @@ for a, b in (("tokens", "GFS"), ("state", "GFS"), ("tokens", "state")):
 show["tok<state draws"] = out["draws_tokens_better_than_state"].astype(str) + "/" + out["n_draws"].astype(str)
 print(show.round(2).to_string(index=False))
 
-# ---- figure: top, MAE vs training months (random-month design, draw-averaged; whiskers = draw range);
+# ---- figure: top, MAE vs training months (random-month design, draw-averaged; draw range in the csv);
 #      bottom, MAE reduction vs GFS at the same training length (%), both designs ----
 C = {"GFS": "#6b6b6b", "state": "#d08c2a", "tokens": "#2a6fb0"}
 LAB = {"GFS": "GFS", "state": "+ raw state (PCA-50)", "tokens": "+ Prithvi tokens (PCA-50)"}
@@ -70,8 +70,7 @@ for j, y in enumerate((2023, 2024)):
     o = out[(out["design"] == "random") & (out["test_year"] == y)]
     for k, a in enumerate(("GFS", "state", "tokens")):
         x = o["months"] * (1 + 0.03 * (k - 1))
-        ax.errorbar(x, o[f"MAE_{a}"], yerr=[o[f"MAE_{a}"] - o[f"MAE_{a}_draw_min"], o[f"MAE_{a}_draw_max"] - o[f"MAE_{a}"]],
-                    color=C[a], marker="o", ms=4.5, lw=1.6, capsize=0, elinewidth=0.9, label=LAB[a])
+        ax.plot(x, o[f"MAE_{a}"], color=C[a], marker="o", ms=4.5, lw=1.6, label=LAB[a])
     ax.set_ylabel("Test MAE ($/MWh)" if j == 0 else "")
     ax.text(0.97, 0.95, f"Test {y}", transform=ax.transAxes, ha="right", va="top", fontsize=9, color="#333")
     ax2 = axes[1, j]
@@ -90,6 +89,7 @@ for j, y in enumerate((2023, 2024)):
     ax2.set_xticks(ticks)
     ax2.set_xticklabels([str(t) for t in ticks])
     ax2.minorticks_off()
+    ax2.set_xlim(2.5, 44)
     ax2.set_xlabel("Labelled training months")
 for ax in axes.flat:
     ax.spines[["top", "right"]].set_visible(False)

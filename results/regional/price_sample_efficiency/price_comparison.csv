@@ -1,0 +1,133 @@
+target,test_year,feature_set,mae,r2,median_ae,rmse,n_test_hours,n_train_hours
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area,8.406909823130835,0.6338023092673049,4.676892986162882,15.908717154604624,8706,17214
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train recent 3m],17.717660703437836,0.25288962725376374,15.006153869701809,22.723213180759657,8706,2167
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d0],9.445027983051064,0.48727239766707886,4.938639230013489,18.824381198504085,8706,2093
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d1],12.00470093590692,0.4462308484049933,8.495792060969245,19.56328308944947,8706,1926
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d2],15.013640865717974,0.4282524186613428,12.191034886463862,19.878313148071094,8706,2208
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d3],17.178635799824384,0.24029868141729893,15.52906267149569,22.913888735091177,8706,2041
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d4],9.12782903107599,0.4020842064313408,4.270466526728939,20.32812733292313,8706,2231
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train recent 6m],17.954266118464275,0.28166955082014045,15.81476043299272,22.28124724600247,8706,4375
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d0],10.078799816947324,0.5677772207804073,6.580908616309056,17.283479768469547,8706,4212
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d1],8.747446757018087,0.4755525763969176,4.242463650118809,19.038307536579392,8706,4438
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d2],12.184649867363083,0.4251704982039515,8.833312559692267,19.931816692221215,8706,4303
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d3],8.9228392830638,0.5119275792842035,4.846207277623564,18.36620780138276,8706,4222
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d4],16.81896530075172,0.36219171761932967,15.740306735295555,20.99531704059463,8706,4188
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train recent 12m],16.42569313556573,0.37114857949748403,13.704257349308426,20.84737521400364,8706,8694
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d0],8.628715059649943,0.5992170620077524,4.9729164205173735,16.643013755469088,8706,8518
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d1],7.7857758451761745,0.6803992559223644,4.271950574749297,14.862136670085269,8706,8538
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d2],11.420786343718683,0.5095801569474445,6.021530331718539,18.410321676461546,8706,8678
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d3],9.635334010914308,0.5852141841777332,5.806130341969579,16.93126114139395,8706,8617
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d4],9.055512232268306,0.537508524583075,5.111366589945877,17.87842372387841,8706,8831
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne,7.541853654962782,0.6911003580113084,4.322817334321908,14.611205949219487,8706,17214
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 3m],16.958065565226512,0.2979411186981249,14.454246915726554,22.02744515948371,8706,2167
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d0],9.51242542127618,0.5198720589415695,5.546220850009803,18.216118804788074,8706,2093
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d1],12.85840028902742,0.45341706530150416,10.250086649856016,19.435933026808527,8706,1926
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d2],15.05354703190408,0.4317884380897229,13.20760399629514,19.81674828983968,8706,2208
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d3],14.960304063875702,0.32726091384980593,12.978846094463423,21.562578340771747,8706,2041
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d4],9.085166420483477,0.4065677375985689,4.402911382919424,20.25176767155959,8706,2231
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 6m],18.38522844694722,0.2853055976060853,16.82540197298303,22.22478406868934,8706,4375
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d0],10.488826727456555,0.5611354480376969,7.360827340868347,17.415767229392017,8706,4212
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d1],8.686155169070881,0.5002952350622516,4.384676548180696,18.58378212424967,8706,4438
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d2],11.772450537992594,0.4261790310480431,9.021332102159972,19.914323925582565,8706,4303
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d3],8.955147044351088,0.5229258621493245,4.912790934110017,18.15809554222327,8706,4222
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d4],15.81738851049983,0.4099525610876036,14.57875144167616,20.193928984557623,8706,4188
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 12m],15.467209762950882,0.4524819687156978,13.537250899680545,19.452551463701287,8706,8694
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d0],8.079512116719899,0.6398719966222748,4.587681427173896,15.776323621902298,8706,8518
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d1],7.688315341643979,0.6866479827866059,4.2715134637545695,14.716129714494038,8706,8538
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d2],9.596454889987287,0.6341257626688557,5.254183276529044,15.90168971343805,8706,8678
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d3],9.794924797301329,0.6237214348567033,6.960504197382136,16.12620214494532,8706,8617
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d4],8.40232438954528,0.5817473860480188,4.906658551236756,17.001870023776984,8706,8831
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne,7.676895949615339,0.674022373231927,4.335920882127076,15.009673891796117,8706,17214
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 3m],16.454761886246494,0.327213384325996,14.073493379887152,21.563340033529478,8706,2167
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d0],9.331921593168882,0.4780077445702454,4.987885286186959,18.99369192947429,8706,2093
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d1],11.628497140067156,0.4707004892571822,8.340987652001417,19.126174161081327,8706,1926
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d2],15.389953944882812,0.40930156757199065,13.438631644516986,20.205065794888984,8706,2208
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d3],16.89830368480233,0.24550783542536891,15.42188102433986,22.83519511657955,8706,2041
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d4],9.07051670916827,0.4005891574302889,4.304842640919199,20.353526036628008,8706,2231
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 6m],16.458217122381146,0.3823799245806746,14.703689685209616,20.660368428549816,8706,4375
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d0],10.741135239601062,0.5548724806486258,7.6353178674607385,17.539595854947386,8706,4212
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d1],8.61884335255514,0.4981413535299859,4.324582125094718,18.623789973051643,8706,4438
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d2],12.69841458106359,0.4114576612499844,10.238079247786349,20.168157079774268,8706,4303
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d3],8.796978258039097,0.5398392027907879,4.862913067562305,17.833318587950078,8706,4222
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d4],16.51876995235913,0.3636481240060768,15.01310973882152,20.971332412031536,8706,4188
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 12m],14.176698284329381,0.510232622575532,12.069991672399869,18.39807084666845,8706,8694
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d0],7.929338593590092,0.6301867986364404,4.476003030510434,15.987058530392757,8706,8518
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d1],7.640478009801384,0.6935553207819678,4.188408693868077,14.553029255217334,8706,8538
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d2],10.166037703271408,0.5946274726870844,5.543645234183797,16.738036713691404,8706,8678
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d3],9.006351427964576,0.6372562049182636,5.844172196180969,15.833515662190843,8706,8617
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d4],8.607711835473749,0.5736408054579918,4.917746552054277,17.16584459093379,8706,8831
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area,7.60435630526331,0.8060118338076245,4.520217962942164,13.38729125894574,8730,25920
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train recent 3m],8.861879363297284,0.6190645597785025,4.450804009642928,18.75991139686037,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d0],11.500778269427506,0.5543948921653944,7.005094540338646,20.289912472531416,8730,2183
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d1],9.87817769885576,0.6809498485936734,5.602532363824036,17.168587685549703,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d2],19.222199327174362,0.3509926599486528,16.48224648765148,24.486679541987378,8730,2160
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d3],9.766779971187773,0.5743894985555537,5.107519009050252,19.82947704760842,8730,2161
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 3m d4],26.10333733465878,0.027803626520345404,24.64794617042134,29.969679028499243,8730,2184
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train recent 6m],8.264197145032457,0.7396183432825969,4.329487611441313,15.509946020654578,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d0],9.01987523946736,0.7482848721434925,5.437632659898389,15.249645636777315,8730,4355
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d1],8.555392964652759,0.7346062875471187,4.976673064185222,15.658509069050549,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d2],10.33488688847741,0.6641528756946167,5.912010254765693,17.61472674319028,8730,4230
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d3],8.020670640007204,0.7081541322147596,3.9818910200894155,16.4203294988996,8730,4369
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 6m d4],9.829417155578335,0.6635894308905151,5.041705159891158,17.62949650941852,8730,4385
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train recent 12m],8.566728219316587,0.7124006655664756,4.455182656474824,16.300428896530693,8730,8706
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d0],8.602045260288827,0.7127037126765381,4.284641008424769,16.29183864744728,8730,8645
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d1],9.23002505229759,0.650575059542134,4.428732263562594,17.9672678963339,8730,8785
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d2],9.884178591959099,0.6675890681108068,5.7784388514280245,17.5243832446904,8730,8617
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d3],10.003862668568326,0.6745506394131671,5.133508520090697,17.33990862924231,8730,8802
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 12m d4],9.18050451392297,0.7227971996812728,4.8624187245591255,16.003091927384148,8730,8724
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train recent 24m],8.37377931312049,0.7661090164764333,4.5611976910623415,14.699813792548792,8730,17400
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 24m d0],8.244819715557226,0.7711674259756884,4.632343292930123,14.539986934272594,8730,17312
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 24m d1],7.783256928759652,0.7711223365396868,3.987330777239622,14.541419351666136,8730,17496
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 24m d2],8.40209458878474,0.7615984781504681,4.457714548501061,14.84087834570083,8730,17454
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 24m d3],8.139068419373272,0.786943431174695,4.8589691157670405,14.029834813145737,8730,17237
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area [train random 24m d4],8.181052321164605,0.7760892778731575,4.602642705930437,14.382770103029229,8730,17358
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne,6.7697608459491825,0.8318755740898335,3.8835263263067397,12.462939895084249,8730,25920
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 3m],8.980715585801235,0.5750350121109935,4.40301449884528,19.81443388806216,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d0],11.065588186067876,0.5658087710271302,6.876865780020628,20.028370486505214,8730,2183
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d1],10.571266622837525,0.6653131783366149,6.640196834694983,17.584272265557605,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d2],16.332633924893972,0.5172924202332239,14.295467626234888,21.117726093562904,8730,2160
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d3],9.58549086541983,0.5553515781920058,4.774528003061995,20.26812018919615,8730,2161
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 3m d4],30.22710079947566,-0.1802792457470841,29.501560610170486,33.02155181228736,8730,2184
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 6m],8.418137833979928,0.6650386479935098,3.9802757909596913,17.59148262828645,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d0],10.202572844795466,0.7257914557365361,7.211258849470429,15.916427118359834,8730,4355
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d1],8.01826034207334,0.7345845819156867,4.1388146844538785,15.659149383537303,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d2],8.611569615563893,0.7333483684357849,4.505322851527287,15.695574477547668,8730,4230
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d3],8.320536310019229,0.6760437018831166,3.9127127742748,17.30008779747256,8730,4369
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 6m d4],8.854934361833308,0.6972815757056515,4.700900985615879,16.723397799182358,8730,4385
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 12m],7.927613118983291,0.7202049484414934,3.8628955694219034,16.077743953975883,8730,8706
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d0],8.10258570350576,0.7281712355335117,4.075065078414347,15.847209485777329,8730,8645
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d1],7.999214536367071,0.717297500095236,3.7455408044686624,16.16106279794015,8730,8785
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d2],8.176725877677342,0.7135392911932832,4.283490810580238,16.268129634214294,8730,8617
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d3],9.12209777614926,0.7097177625551476,4.838997396580597,16.376282604594948,8730,8802
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 12m d4],8.032916034668613,0.7658569706354548,4.29926482413728,14.7077320740864,8730,8724
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train recent 24m],7.352850246487187,0.808687386874832,4.1099790409590575,13.294649596714104,8730,17400
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 24m d0],7.527364941900828,0.7903779698963413,4.062613205738186,13.916292701365244,8730,17312
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 24m d1],7.0825094392457615,0.7943768197838583,3.7541533972123826,13.782916631586081,8730,17496
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 24m d2],7.293197702529432,0.7967438979584366,3.7364042538567617,13.703354398645008,8730,17454
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 24m d3],7.178395861839112,0.8032025938928768,4.090587649404792,13.483876878674746,8730,17237
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne [train random 24m d4],7.424086597190308,0.7970516716925704,4.314138564881107,13.692975545844856,8730,17358
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne,7.094743472410135,0.8068816887869805,3.9562591332633374,13.357242813804229,8730,25920
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 3m],8.885235015682458,0.6066131763344225,4.33679636523866,19.064042521933946,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d0],11.07388528002844,0.5651509257538943,6.748379748337907,20.043537285326828,8730,2183
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d1],9.981946871662618,0.6510456689008661,5.940824264530306,17.955164562578716,8730,2179
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d2],14.875337262046731,0.5657195689883401,12.480146962655683,20.030427736411593,8730,2160
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d3],9.634030650078001,0.5520931199015093,4.912893198821729,20.342248724363618,8730,2161
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 3m d4],27.001593378997665,0.018367910866472603,26.19034393948865,30.114764187693716,8730,2184
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 6m],8.238335577697406,0.7107120957468877,4.09363058244389,16.348210873797058,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d0],9.465867279732663,0.7389080130801738,6.256204963877893,15.531087447535842,8730,4355
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d1],8.39942237692713,0.7124039290383499,4.451391240532601,16.300336413454794,8730,4387
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d2],8.814907555355955,0.7199015280886493,4.508684985501208,16.08645924910993,8730,4230
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d3],8.53093275132292,0.6646151215793095,4.048653178528298,17.602600483979913,8730,4369
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 6m d4],9.670229899538166,0.6609375780971745,5.145505282042283,17.698844894235535,8730,4385
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 12m],8.13068319824153,0.7188907007897782,4.051440828878228,16.115459743105617,8730,8706
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d0],8.466187705261504,0.7042771446836877,4.222341288518674,16.529036503371938,8730,8645
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d1],8.40566939254857,0.7070985691007714,4.1222331965188665,16.449997642060378,8730,8785
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d2],8.424960810286938,0.7068075718469556,4.342766704410138,16.458167140872057,8730,8617
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d3],8.965904435339906,0.7194688760843084,4.546795751153958,16.098878369513166,8730,8802
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 12m d4],8.282386566972592,0.753208976488823,4.326659396669363,15.099750556525713,8730,8724
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train recent 24m],7.814659066671456,0.7773604309766394,4.201460065121395,14.341886119079643,8730,17400
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 24m d0],7.4780605415743135,0.7931068551277999,4.093641448613589,13.825413964434754,8730,17312
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 24m d1],7.095694076652238,0.7907969961424124,3.6557293255840264,13.902376680862998,8730,17496
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 24m d2],7.671350115705582,0.7823333756097689,3.9767347295228728,14.180809224738729,8730,17454
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 24m d3],7.36214114939363,0.7983110355309562,4.068496062472207,13.650424632461085,8730,17237
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne [train random 24m d4],7.788120175289575,0.7702490520077411,4.315969237439074,14.569134390269534,8730,17358
