@@ -107,45 +107,54 @@ def split(pred, base, full, day_of_row, regimes):
     return pd.DataFrame(rows)
 
 
-# ---- ISO-NE: rebuild price_benchmark.py's hourly row order (years 2021-2024, hours with a hub price, sorted) ----
-hours = []
-for y in YEARS:
-    ts = pd.read_parquet(root / f"data/modeling_table_{y}.parquet", columns=["timestamp", "timestamp_local"]).groupby("timestamp").first()
-    lmp = pd.read_parquet(c / f"isone_dayahead_hourly_lmp_{y}.parquet")
-    lmp["timestamp"] = pd.to_datetime(lmp["timestamp_parsed"]).astype("datetime64[ns]")
-    hours.append(ts.join(lmp[lmp["location"] == "HUB"].set_index("timestamp")["lmp_total"], how="inner").reset_index())
-ne_rows = pd.concat(hours, ignore_index=True).sort_values("timestamp").reset_index(drop=True)
-p = pd.read_parquet(root / "results/regional/price_pooled_extents/price_predictions.parquet")
-chk = p.drop_duplicates("row").set_index("row")["actual"]
-assert np.allclose(chk.to_numpy(), ne_rows.loc[chk.index, "lmp_total"].to_numpy()), "ISO-NE row order mismatch"
-ne_reg = daily_regimes(forecast_series("gfs_ne", cells_points, list(ZONES.values())), "US/Eastern")
-ne_day = ne_rows["timestamp_local"].dt.normalize()
-PRE = "calendar + past values + known gas + weather (issue) + "
-res = []
-for label, base, full in (("ISO-NE: GFS -> + tokens", "GFS area", "GFS area + tokens ne"),
-                          ("ISO-NE: GFS + regional -> + tokens", "GFS area + GFS regional", "GFS area + GFS regional + tokens ne")):
-    res.append(split(p, PRE + base, PRE + full, ne_day, ne_reg).assign(comparison=label))
+def isone_rows():
+    """price_benchmark.py's hourly row order (years 2021-2024, hours with a hub price, sorted), checked against p."""
+    hours = []
+    for y in YEARS:
+        ts = pd.read_parquet(root / f"data/modeling_table_{y}.parquet", columns=["timestamp", "timestamp_local"]).groupby("timestamp").first()
+        lmp = pd.read_parquet(c / f"isone_dayahead_hourly_lmp_{y}.parquet")
+        lmp["timestamp"] = pd.to_datetime(lmp["timestamp_parsed"]).astype("datetime64[ns]")
+        hours.append(ts.join(lmp[lmp["location"] == "HUB"].set_index("timestamp")["lmp_total"], how="inner").reset_index())
+    return pd.concat(hours, ignore_index=True).sort_values("timestamp").reset_index(drop=True)
 
-# ---- ERCOT: the hub columns' hourly index, as in ercot_price_benchmark.py ----
-pr = pd.concat([pd.read_parquet(c / f"ercot_dam_spp_{y}.parquet") for y in YEARS])
-pr = pr[pr["settlement_point"] == "HB_HUBAVG"]
-tx_rows = pd.read_parquet(root / "results/ercot/without_uri/ercot_price_predictions.parquet")
-tx_rows = tx_rows[tx_rows["hub"] == "HB_HUBAVG"]
-all_hubs = pd.concat([pd.read_parquet(c / f"ercot_dam_spp_{y}.parquet") for y in YEARS])
-idx = all_hubs.pivot_table(index="timestamp", columns="settlement_point", values="price").index
-local = all_hubs.drop_duplicates("timestamp").set_index("timestamp")["timestamp_local"].reindex(idx)
-price = pr.drop_duplicates("timestamp").set_index("timestamp")["price"].reindex(idx)
-chk = tx_rows.drop_duplicates("row").set_index("row")["actual"]
-assert np.allclose(chk.to_numpy(), price.to_numpy()[chk.index]), "ERCOT row order mismatch"
-tx_reg = daily_regimes(forecast_series("gfs_texas", cells_boxes, TX_BOXES), "US/Central")
-tx_day = pd.Series(pd.DatetimeIndex(local.to_numpy()).normalize(), index=range(len(idx)))
-B = "calendar + past prices + Henry Hub + weather (issue) + GFS area"
-res.append(split(tx_rows, B, B + " + Prithvi tokens", tx_day, tx_reg).assign(comparison="ERCOT hub average: GFS -> + tokens"))
 
-out = pd.concat(res, ignore_index=True)
-out.to_csv(OUT / "gain_by_regime.csv", index=False)
-pd.set_option("display.width", 250)
-cols = ["comparison", "test_year", "regime", "hours", "share_of_hours", "MAE_base", "MAE_tokens", "dMAE", "lo", "hi",
-        "reduction_pct", "share_of_total_gain"]
-print(out[cols].round(3).to_string(index=False))
-print(out.dropna(subset=["thresholds_K"])[["comparison", "test_year", "thresholds_K"]].to_string(index=False))
+def main():
+    ne_rows = isone_rows()
+    p = pd.read_parquet(root / "results/regional/price_pooled_extents/price_predictions.parquet")
+    chk = p.drop_duplicates("row").set_index("row")["actual"]
+    assert np.allclose(chk.to_numpy(), ne_rows.loc[chk.index, "lmp_total"].to_numpy()), "ISO-NE row order mismatch"
+    ne_reg = daily_regimes(forecast_series("gfs_ne", cells_points, list(ZONES.values())), "US/Eastern")
+    ne_day = ne_rows["timestamp_local"].dt.normalize()
+    PRE = "calendar + past values + known gas + weather (issue) + "
+    res = []
+    for label, base, full in (("ISO-NE: GFS -> + tokens", "GFS area", "GFS area + tokens ne"),
+                              ("ISO-NE: GFS + regional -> + tokens", "GFS area + GFS regional", "GFS area + GFS regional + tokens ne")):
+        res.append(split(p, PRE + base, PRE + full, ne_day, ne_reg).assign(comparison=label))
+
+    # ---- ERCOT: the hub columns' hourly index, as in ercot_price_benchmark.py ----
+    pr = pd.concat([pd.read_parquet(c / f"ercot_dam_spp_{y}.parquet") for y in YEARS])
+    pr = pr[pr["settlement_point"] == "HB_HUBAVG"]
+    tx_rows = pd.read_parquet(root / "results/ercot/without_uri/ercot_price_predictions.parquet")
+    tx_rows = tx_rows[tx_rows["hub"] == "HB_HUBAVG"]
+    all_hubs = pd.concat([pd.read_parquet(c / f"ercot_dam_spp_{y}.parquet") for y in YEARS])
+    idx = all_hubs.pivot_table(index="timestamp", columns="settlement_point", values="price").index
+    local = all_hubs.drop_duplicates("timestamp").set_index("timestamp")["timestamp_local"].reindex(idx)
+    price = pr.drop_duplicates("timestamp").set_index("timestamp")["price"].reindex(idx)
+    chk = tx_rows.drop_duplicates("row").set_index("row")["actual"]
+    assert np.allclose(chk.to_numpy(), price.to_numpy()[chk.index]), "ERCOT row order mismatch"
+    tx_reg = daily_regimes(forecast_series("gfs_texas", cells_boxes, TX_BOXES), "US/Central")
+    tx_day = pd.Series(pd.DatetimeIndex(local.to_numpy()).normalize(), index=range(len(idx)))
+    B = "calendar + past prices + Henry Hub + weather (issue) + GFS area"
+    res.append(split(tx_rows, B, B + " + Prithvi tokens", tx_day, tx_reg).assign(comparison="ERCOT hub average: GFS -> + tokens"))
+
+    out = pd.concat(res, ignore_index=True)
+    out.to_csv(OUT / "gain_by_regime.csv", index=False)
+    pd.set_option("display.width", 250)
+    cols = ["comparison", "test_year", "regime", "hours", "share_of_hours", "MAE_base", "MAE_tokens", "dMAE", "lo", "hi",
+            "reduction_pct", "share_of_total_gain"]
+    print(out[cols].round(3).to_string(index=False))
+    print(out.dropna(subset=["thresholds_K"])[["comparison", "test_year", "thresholds_K"]].to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()

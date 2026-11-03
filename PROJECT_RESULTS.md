@@ -3087,3 +3087,47 @@ Reading:
   The gas link for ISO-NE is consistent with this but not yet tested
   directly; a direct test would split cold-day gains by the Algonquin
   minus Henry Hub basis.
+
+### Cold-day token gain vs the gas basis (2026-11-03)
+
+Question: among ISO-NE forecast-cold days, is the token gain larger when
+regional gas is constrained? Script `local/price_gain_by_gas_basis.py` ->
+`results/price_regimes/gain_by_gas_basis.csv`.
+- **Basis, known before bidding:** the last weekly EIA Algonquin
+  Citygate quote dated on or before D-2, minus Henry Hub on that same
+  date.
+- **High vs low:** above vs at-or-below the median basis over the
+  training years' cold days ($7.78/MMBtu for test 2023, $4.20 for test
+  2024). The upper quartile was checked too, but has only 4 high-basis
+  cold days.
+- **Gain** = MAE(baseline) - MAE(+ tokens), so positive = tokens help.
+  95% week-block bootstrap; the high-minus-low difference resamples
+  weeks jointly.
+- **Pooling:** cold days of 2023 and 2024 are pooled, because 2023 has
+  only 10 cold days, 2 of them high-basis.
+
+| comparison, cold days 2023+2024 (median split) | high basis (16 days, mean $8.0) | low basis (36 days, mean $1.3) | high minus low |
+|---|---|---|---|
+| tokens over GFS | +1.24 [-1.29, +4.39] (5%) | **+3.95 [+1.90, +5.62]** (17%) | -2.71 [-5.66, +0.39] |
+| tokens over GFS + regional | +1.22 [-0.75, +3.51] (5%) | **+3.22 [+1.22, +4.90]** (15%) | -2.01 [-4.67, +0.88] |
+
+- **2024 alone** (14 high-basis vs 28 low-basis cold days):
+  - over GFS: +0.07 vs **+4.44**, difference **-4.36 [-7.09, -1.82]**;
+  - over GFS + regional: +0.84 vs **+3.19**, difference -2.35 [-5.79, +1.02].
+- **Non-cold days (control):** the token gain is also no larger under a
+  high basis (pooled, over GFS: -0.55 vs +0.72).
+
+Reading: no. The cold-day token gain is not concentrated when the gas
+basis is high; if anything it is larger when the basis is low. So the
+cold-weather benefit should not be attributed specifically to regional
+gas constraints.
+
+Caveats:
+- The only basis known in advance is a stale weekly point quote
+  (2-9 days old), a weak proxy for the constraint on the day.
+- Only 16 high-basis cold days, in a handful of weeks.
+
+A reading consistent with the data: the tokens help predict cold-day
+prices through the weather (demand and the cold pattern itself). Days
+whose gas premium was already high a week earlier are priced partly by
+the lags and the known gas level.
