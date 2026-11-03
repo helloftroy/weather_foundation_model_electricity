@@ -2410,6 +2410,85 @@ linear function of the pooled input state, PC23 and PC19 much less so
 "southerly flow" for price likely differs between winter and summer (not
 yet split). Amplitudes are modest (0.1-0.9 sigma).
 
+Composite selection, stated precisely: the composites are selected on the
+PC score itself (top minus bottom decile of the deseasonalised score over
+all 2021-2024 target times), not on SHAP; SHAP only sets the orientation.
+So they show what the PC encodes. Whether that matches when the model
+uses it is checked below.
+
+### What the PCs encode vs when the model uses them (2026-11-02)
+
+Script `local/token_pc_diagnostics.py` -> `results/price_token_shap/composites/`
+(`pc_shap_summary.csv`, `pc_shap_profile.csv`, `pc_diagnostics.csv`).
+SHAP is from the 2024 test hours. "Own-value share" is the share of the
+PC's SHAP variance explained by its own value (decile means); the rest
+comes from interactions with other features. ΔSHAP is the mean SHAP in
+the price-raising PC-score decile minus the price-lowering one.
+
+| PC | Pearson / Spearman (score, SHAP) | own-value share | ΔSHAP | mean SHAP, raising / lowering decile | mean abs SHAP |
+|---|---|---|---|---|---|
+| PC23 | -0.71 / -0.75 | 71% | +$3.96/MWh | +3.09 / -0.87 | 1.07 |
+| PC2 | +0.38 / +0.32 | 32% | +$1.82/MWh | +1.63 / -0.19 | 0.74 |
+| PC19 | +0.84 / +0.89 | 86% | +$1.24/MWh | +0.57 / -0.67 | 0.49 |
+
+Mean SHAP by PC-score decile (1 = lowest score):
+
+| decile | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| PC23 | +3.09 | +1.59 | +0.11 | -0.49 | -0.48 | -0.90 | -0.96 | -0.94 | -0.79 | -0.87 |
+| PC2 | -0.19 | -0.24 | -0.36 | -0.36 | -0.41 | -0.44 | -0.42 | +0.13 | +0.84 | +1.63 |
+| PC19 | -0.67 | -0.54 | -0.54 | -0.53 | -0.38 | -0.03 | +0.40 | +0.52 | +0.62 | +0.57 |
+
+Correlation of the deseasonalised PC score with deseasonalised pooled
+diagnostics (issue time, all 2021-2024 target times):
+
+| diagnostic | PC23 | PC2 | PC19 |
+|---|---|---|---|
+| T2M, New England | +0.06 | -0.03 | -0.04 |
+| T2M, wide box | +0.14 | -0.27 | -0.03 |
+| T2M, Quebec-Maritimes minus Southeast | +0.03 | -0.03 | -0.09 |
+| T2M, Great Lakes minus New England | +0.06 | **-0.50** | -0.01 |
+| SLP, New England | -0.03 | **-0.43** | -0.14 |
+| SLP, wide box | -0.13 | **-0.40** | -0.15 |
+| height ~500 hPa, New England | +0.13 | -0.17 | -0.01 |
+| height ~500 hPa, wide box | +0.14 | **-0.47** | -0.02 |
+| T ~600 hPa, wide box | +0.19 | -0.39 | +0.03 |
+| T ~250 hPa, New England | +0.08 | +0.15 | **+0.29** |
+| U wind ~290 hPa, New England | +0.06 | +0.31 | +0.17 |
+| V wind ~290 hPa, New England | 0.00 | **+0.71** | +0.11 |
+| V wind 10 m, New England | +0.08 | +0.35 | -0.01 |
+| column water vapour, New England | -0.06 | +0.24 | +0.04 |
+| cloud ~500 hPa, New England | -0.07 | +0.35 | -0.02 |
+
+Reading:
+- **PC19:** the price effect is close to monotonic in the score
+  (Spearman 0.89; 86% from its own value). The composite is therefore
+  close to a direct physical reading. The PC is weakly associated with
+  a warm upper troposphere (~250 hPa) over New England.
+- **PC23:** the effect is monotonic but has a threshold. Only the lowest
+  two deciles raise the price (+$3.1 and +$1.6/MWh); the rest sit near
+  -$0.5 to -$0.9. The PC is not a regional-mean quantity: every pooled
+  diagnostic has abs r <= 0.19. Its low (price-raising) end leans
+  towards a cooler mid troposphere and lower 500 hPa heights over the
+  wide box. The composite's trough structure is spatial, which pooled
+  means cannot show.
+- **PC2:** the physical reading is clearest, but the price effect is
+  the least direct.
+  - Physically, a high score means:
+    - deep southerly flow over New England (V ~290 hPa, r = +0.71);
+    - low pressure and lower 500 hPa heights over the region;
+    - cold air over the Great Lakes relative to New England
+      (r = -0.50);
+    - more cloud.
+    That pattern is a trough and cold front approaching from the west.
+  - The price effect, though, is flat over the lowest seven deciles and
+    rises only in the top three. Its own value explains just 32% of its
+    SHAP variance; the rest depends on other features (interactions).
+- **Summary:** each PC encodes a recognisable large-scale pattern, and
+  the model gives positive price contributions mainly at the strongest
+  expression of that pattern (one tail, not linearly). For PC2 how much
+  it contributes also depends strongly on the other inputs.
+
 ## Price at longer leads: 1, 3, 5 and 7 days ahead (2026-10-31)
 
 Question: does Prithvi become more useful relative to GFS as the lead

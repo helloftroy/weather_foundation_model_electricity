@@ -1,7 +1,8 @@
 """Figure 4C: what the most important token PCs look like in the weather. For each PC (rows), the difference
-between the 10% of times where it pushes the price up most and the 10% where it pushes it down (deseasonalised
-issue-time MERRA-2 input fields, in units of the model's input sigma; oriented by the sign of the PC's SHAP effect so
-every row reads 'conditions that raise the price'). Reads results/price_token_shap/composites/; writes
+between the top and bottom deciles of the PC score itself (selected on the score, not on SHAP; deseasonalised
+issue-time MERRA-2 input fields, in units of the model's input sigma), oriented by the sign of the score-SHAP
+correlation so every row reads 'the price-raising end of the PC'. Row label: ΔSHAP, mean SHAP in the price-raising
+score decile minus the price-lowering one (2024 test hours). Reads results/price_token_shap/composites/; writes
 results/figures/fig4c_pc_composites.{png,pdf}. Bare panels; caption text lives in the reply."""
 from pathlib import Path
 
@@ -66,8 +67,8 @@ for i, k in enumerate(PCS):
             ax.text(0.5, 1.04, label, transform=ax.transAxes, ha="center", va="bottom", fontsize=7.5)
         if j == 0:
             eff = summary.loc[k]
-            up = eff["mean_shap_top_decile_$"] if sign[k] > 0 else eff["mean_shap_bottom_decile_$"]
-            ax.text(-0.06, 0.5, f"PC{k}\n(+${up:.1f}/MWh)", transform=ax.transAxes, ha="right", va="center", fontsize=8,
+            d = sign[k] * (eff["mean_shap_top_decile_$"] - eff["mean_shap_bottom_decile_$"])
+            ax.text(-0.06, 0.5, f"PC{k}\nΔSHAP\n+${d:.1f}/MWh", transform=ax.transAxes, ha="right", va="center", fontsize=8,
                     fontweight="bold")
         if i == len(PCS) - 1:
             cax = fig.add_subplot(gs[-1, j])
@@ -75,7 +76,7 @@ for i, k in enumerate(PCS):
             cb.ax.tick_params(labelsize=6.5)
             cb.locator = plt.MaxNLocator(3)
             cb.update_ticks()
-fig.text(0.5, 0.0, "Difference, price-raising minus price-lowering decile (σ units, deseasonalised)", ha="center", fontsize=7.5)
+fig.text(0.5, 0.0, "Difference, price-raising minus price-lowering decile of the PC score (σ units, deseasonalised)", ha="center", fontsize=7.5)
 out = root / "results/figures/fig4c_pc_composites"
 fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
 fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
