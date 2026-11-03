@@ -27,8 +27,8 @@ COLS = [  # (source, colour field, arrows (u, v) or None, column label)
 ]
 NE_BOX = (-75.0, -66.875, 40.0, 47.5)
 proj = ccrs.PlateCarree()
-fig = plt.figure(figsize=(7.5, 5.2))
-gs = fig.add_gridspec(len(PCS) + 1, len(COLS), width_ratios=[1.5, 1, 1, 1, 1], height_ratios=[1] * len(PCS) + [0.07],
+fig = plt.figure(figsize=(8.6, 5.2))
+gs = fig.add_gridspec(len(PCS) + 1, len(COLS) + 2, width_ratios=[1.5, 1, 1, 1, 1, 0.32, 1.15], height_ratios=[1] * len(PCS) + [0.07],
                       hspace=0.12, wspace=0.08)
 lim = {}
 comps = {k: np.load(C / f"pc{k}_composite.npz") for k in PCS}
@@ -76,6 +76,33 @@ for i, k in enumerate(PCS):
             cb.ax.tick_params(labelsize=6.5)
             cb.locator = plt.MaxNLocator(3)
             cb.update_ticks()
+# Last column: the PC's own price effect across its score deciles (2024 test hours), one shared y-axis.
+prof = pd.read_csv(C / "pc_shap_profile.csv")
+ymin, ymax = prof["mean_shap"].min(), prof["mean_shap"].max()
+for i, k in enumerate(PCS):
+    ax = fig.add_subplot(gs[i, -1])
+    d = prof[prof["pc"] == k].sort_values("decile")
+    up = 10 if sign[k] > 0 else 1  # the price-raising end, the decile the maps compare against the other end
+    ax.axhline(0, color="#888888", lw=0.6, zorder=1)
+    ax.plot(d["decile"], d["mean_shap"], color="#555555", lw=1.0, zorder=2)
+    ax.scatter(d["decile"], d["mean_shap"], s=14, color="#555555", zorder=3)
+    for dd, c in ((up, "#b2182b"), (11 - up, "#2166ac")):
+        r = d[d["decile"] == dd].iloc[0]
+        ax.scatter(dd, r["mean_shap"], s=30, color=c, zorder=4, edgecolor="white", linewidth=0.5)
+    ax.set_ylim(ymin - 0.4, ymax + 0.4)
+    ax.set_xlim(0.3, 10.7)
+    ax.set_xticks([1, 5, 10])
+    ax.tick_params(labelsize=6.5, length=2)
+    if i < len(PCS) - 1:
+        ax.set_xticklabels([])
+    else:
+        ax.set_xlabel("PC-score decile", fontsize=7)
+    if i == len(PCS) // 2:
+        ax.set_ylabel("Mean SHAP of the PC, $/MWh", fontsize=7, labelpad=1)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    if i == 0:
+        ax.text(0.5, 1.04, "Price effect by\nPC-score decile", transform=ax.transAxes, ha="center", va="bottom", fontsize=7.5)
 fig.text(0.5, 0.0, "Difference, price-raising minus price-lowering decile of the PC score (σ units, deseasonalised)", ha="center", fontsize=7.5)
 out = root / "results/figures/fig4c_pc_composites"
 fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
