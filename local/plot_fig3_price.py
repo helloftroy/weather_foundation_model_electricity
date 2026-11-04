@@ -3,7 +3,9 @@ Northeast / the wide box; B, ISO-NE: GFS + regional weather, + tokens, + Prithvi
 forecast state (150 fields, box mean, PCA-50), + GFS state + tokens
 (out-of-sample R² of the hourly day-ahead hub LMP, 2023 and 2024 as two lines). C, ERCOT: % reduction in MAE from
 adding Prithvi tokens to GFS at each hub (Uri fortnight dropped from training), 95% week-block bootstrap. D, both
-markets on the same relative scale: ISO-NE hub and the ERCOT hub average. Relative (%) changes are used across
+markets against the full GFS state (% MAE reduction vs GFS from tokens, the full GFS state as box mean or gridded
+PCA-50, and box state + tokens; ISO-NE hub and the ERCOT hub average, from results/regional/price_gfs_full and
+results/ercot/gfs_full). Relative (%) changes are used across
 markets because their price levels differ. Reads results/regional/price_pooled_extents/ (A, D), results/regional/price_gfs_full/ (B) and results/ercot/without_uri/;
 writes results/figures/fig3_price.{png,pdf}, fig3_price_table.csv (A, B) and fig3_price_markets_table.csv (C, D).
 Bare panels; caption text lives in the reply / PROJECT_RESULTS.md."""
@@ -63,7 +65,7 @@ METRIC = sys.argv[1] if len(sys.argv) > 1 else "R2"  # "R2" (fig3_price) or "MAE
 fig = plt.figure(figsize=(7.2, 6.4))
 outer = fig.add_gridspec(2, 1, height_ratios=[1, 1.05], hspace=0.42)
 top = outer[0].subgridspec(1, 2, wspace=0.12, width_ratios=[4, 5])
-bottom = outer[1].subgridspec(1, 2, width_ratios=[1.45, 1], wspace=0.55)
+bottom = outer[1].subgridspec(1, 2, width_ratios=[1, 1], wspace=1.05)
 axes = [fig.add_subplot(top[0])]
 axes.append(fig.add_subplot(top[1], sharey=axes[0]))
 plt.setp(axes[1].get_yticklabels(), visible=False)
@@ -140,18 +142,41 @@ axc.grid(axis="x", color="#ececec", lw=0.6, zorder=0)
 axc.legend(frameon=False, fontsize=7.5, loc="lower right", handletextpad=0.2, borderaxespad=0.1)
 tidy(axc, "C")
 
-axd = fig.add_subplot(bottom[1].subgridspec(2, 1, height_ratios=[1, 0.12])[0], sharex=axc)
-groups = [("ISO-NE", "Internal hub", "ISO-NE"), ("ERCOT", "Hub average", "ERCOT\nhub average")]
-for i, (mk, hub, _) in enumerate(groups):
-    for y, color, marker, off in ((2023, Y23, "o", -0.15), (2024, Y24, "s", 0.15)):
-        r = mt[(mt["market"] == mk) & (mt["hub"] == hub) & (mt["test_year"] == y)].iloc[0]
-        axd.hlines(i + off, r["gain_lo"], r["gain_hi"], color=color, lw=1.5, zorder=2)
-        axd.scatter(r["gain_pct"], i + off, s=38, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.6)
+# D: both markets against the full GFS state (from the full-GFS runs, so every row of a market is on the same hours):
+# % MAE reduction vs GFS from adding tokens, the full GFS state (box mean or gridded PCA-50), or the box state + tokens.
+ROWS = [("tokens", "+ Prithvi tokens"), ("box", "+ full GFS state, box"), ("grid", "+ full GFS state, grid"),
+        ("box+tokens", "+ GFS state (box) + tokens")]
+FS = {"ISO-NE": (G, {"tokens": " + tokens ne", "box": " + GFS full state box", "grid": " + GFS full state grid",
+                     "box+tokens": " + GFS full state box + tokens ne"}),
+      "ERCOT": (B_TX, {"tokens": " + Prithvi tokens", "box": " + GFS full state", "grid": " + GFS full grid",
+                       "box+tokens": " + GFS full state + Prithvi tokens"})}
+iso = load("results/regional/price_gfs_full").drop(columns="feature_set").rename(columns={"fs": "feature_set"})
+erc = pd.read_parquet(root / "results/ercot/gfs_full/ercot_price_predictions.parquet")
+erc = erc[erc["hub"] == "HB_HUBAVG"]
+d_rows = []
+for mk, src_df in (("ISO-NE", iso), ("ERCOT", erc)):
+    base, add = FS[mk]
+    for y, g in src_df.groupby("test_year"):
+        for key, _ in ROWS:
+            d_rows.append({"market": mk, "row": key, "test_year": y, **gain(g, base, base + add[key])})
+dt = pd.DataFrame(d_rows)
+axd = fig.add_subplot(bottom[1])
+ylab, ypos = [], []
+for m_i, (mk, title) in enumerate((("ISO-NE", "ISO-NE"), ("ERCOT", "ERCOT hub average"))):
+    y0 = m_i * (len(ROWS) + 1.3)
+    axd.text(-0.02, y0 - 0.85, title, transform=axd.get_yaxis_transform(), ha="right", va="center", fontsize=8, fontweight="bold")
+    for k, (key, lab) in enumerate(ROWS):
+        ylab.append(lab)
+        ypos.append(y0 + k)
+        for y, color, marker, off in ((2023, Y23, "o", -0.17), (2024, Y24, "s", 0.17)):
+            r = dt[(dt["market"] == mk) & (dt["row"] == key) & (dt["test_year"] == y)].iloc[0]
+            axd.hlines(y0 + k + off, r["gain_lo"], r["gain_hi"], color=color, lw=1.2, zorder=2)
+            axd.scatter(r["gain_pct"], y0 + k + off, s=26, color=color, marker=marker, zorder=3, edgecolor="white", linewidth=0.5)
 axd.axvline(0, color="#555555", lw=0.8, zorder=2.5)
-axd.set_yticks(range(len(groups)))
-axd.set_yticklabels([g[2] for g in groups])
-axd.set_ylim(len(groups) - 0.4, -0.6)
-axd.set_xlabel("MAE reduction from adding\nPrithvi tokens to GFS (%)")
+axd.set_yticks(ypos)
+axd.set_yticklabels(ylab, fontsize=7.5)
+axd.set_ylim(max(ypos) + 0.6, -1.4)
+axd.set_xlabel("MAE reduction vs GFS (%)")
 axd.grid(axis="x", color="#ececec", lw=0.6, zorder=0)
 tidy(axd, "D")
 out = root / ("results/figures/fig3_price" + ("" if METRIC == "R2" else "_mae"))
@@ -161,4 +186,6 @@ t.drop(columns="feature_set").to_csv(root / "results/figures/fig3_price_table.cs
 pd.set_option("display.width", 200)
 print(t.drop(columns="feature_set").round(3).to_string(index=False))
 mt.to_csv(root / "results/figures/fig3_price_markets_table.csv", index=False)
+dt.to_csv(root / "results/figures/fig3_price_fullstate_table.csv", index=False)
+print(dt.round(2).to_string(index=False))
 print(mt.round(2).to_string(index=False))
