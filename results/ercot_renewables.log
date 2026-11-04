@@ -1,45 +1,77 @@
 
-[wind, test 2023] train 17358 h, test 8706 h; mean CF 0.510, test capacity proxy 24132 MW
-  calendar                                                     MAE 25.03%  ramps 23.63%
-  calendar + weather (issue)                                   MAE 17.48%  ramps 18.39%
-  calendar + weather (issue) + GFS                             MAE 11.47%  ramps 14.19%
-  calendar + weather (issue) + GFS + tokens                    MAE 10.01%  ramps 12.44%
-  calendar + weather (issue) + GFS + actual weather            MAE  9.61%  ramps 11.61%
+[wind, test 2023] train 17346 h, test 8706 h; mean CF 0.510, test capacity proxy 24132 MW
+  calendar                                                     MAE 25.05%  ramps 22.99%
+  calendar + weather (issue)                                   MAE 17.42%  ramps 18.06%
+  calendar + weather (issue) + GFS                             MAE 11.45%  ramps 14.06%
+  calendar + weather (issue) + GFS + tokens                    MAE 10.16%  ramps 12.78%
+  calendar + weather (issue) + GFS + actual weather            MAE  9.61%  ramps 11.77%
+  calendar + weather (issue) + GFS + full GFS state            MAE  9.57%  ramps 10.94%
+  calendar + weather (issue) + GFS + full GFS state + tokens   MAE  9.30%  ramps 10.74%
 
-[wind, test 2024] train 26064 h, test 8730 h; mean CF 0.502, test capacity proxy 25350 MW
-  calendar                                                     MAE 24.44%  ramps 20.40%
-  calendar + weather (issue)                                   MAE 18.42%  ramps 18.83%
-  calendar + weather (issue) + GFS                             MAE 10.71%  ramps 12.43%
-  calendar + weather (issue) + GFS + tokens                    MAE  9.98%  ramps 11.41%
-  calendar + weather (issue) + GFS + actual weather            MAE  9.01%  ramps 10.76%
+[wind, test 2024] train 26052 h, test 8730 h; mean CF 0.502, test capacity proxy 25350 MW
+  calendar                                                     MAE 24.27%  ramps 20.16%
+  calendar + weather (issue)                                   MAE 18.56%  ramps 18.89%
+  calendar + weather (issue) + GFS                             MAE 10.65%  ramps 12.66%
+  calendar + weather (issue) + GFS + tokens                    MAE 10.02%  ramps 11.45%
+  calendar + weather (issue) + GFS + actual weather            MAE  8.96%  ramps 10.78%
+  calendar + weather (issue) + GFS + full GFS state            MAE  8.88%  ramps 10.44%
+  calendar + weather (issue) + GFS + full GFS state + tokens   MAE  8.97%  ramps 10.38%
 
-[solar, test 2023] train 17358 h, test 8706 h; mean CF 0.302, test capacity proxy 11958 MW
-  calendar                                                     MAE  8.76%  ramps 13.42%
-  calendar + weather (issue)                                   MAE  6.76%  ramps  9.67%
-  calendar + weather (issue) + GFS                             MAE  4.78%  ramps  6.23%
-  calendar + weather (issue) + GFS + tokens                    MAE  4.64%  ramps  6.92%
-  calendar + weather (issue) + GFS + actual weather            MAE  4.17%  ramps  4.88%
+[solar, test 2023] train 17346 h, test 8706 h; mean CF 0.302, test capacity proxy 11958 MW
+  calendar                                                     MAE  8.81%  ramps 13.72%
+  calendar + weather (issue)                                   MAE  6.80%  ramps  9.77%
+  calendar + weather (issue) + GFS                             MAE  4.78%  ramps  6.38%
+  calendar + weather (issue) + GFS + tokens                    MAE  4.62%  ramps  6.96%
+  calendar + weather (issue) + GFS + actual weather            MAE  4.17%  ramps  4.80%
+  calendar + weather (issue) + GFS + full GFS state            MAE  4.35%  ramps  5.64%
+  calendar + weather (issue) + GFS + full GFS state + tokens   MAE  4.34%  ramps  5.81%
 
-[solar, test 2024] train 26064 h, test 8730 h; mean CF 0.295, test capacity proxy 18332 MW
-  calendar                                                     MAE  8.75%  ramps 15.53%
-  calendar + weather (issue)                                   MAE  6.95%  ramps 10.62%
-  calendar + weather (issue) + GFS                             MAE  5.47%  ramps  7.94%
-  calendar + weather (issue) + GFS + tokens                    MAE  5.01%  ramps  7.59%
-  calendar + weather (issue) + GFS + actual weather            MAE  4.75%  ramps  5.41%
-target  test_year hours                model minus  dMAE_pct_cap    lo    hi  pct_of_minus_MAE
- solar       2023   all GFS + actual weather   GFS         -0.61 -0.93 -0.34            -12.75
- solar       2023 ramps GFS + actual weather   GFS         -1.35 -2.14 -0.69            -21.63
- solar       2023   all         GFS + tokens   GFS         -0.14 -0.36  0.07             -2.88
- solar       2023 ramps         GFS + tokens   GFS          0.68 -0.02  1.35             10.98
- solar       2024   all GFS + actual weather   GFS         -0.73 -0.93 -0.53            -13.31
- solar       2024 ramps GFS + actual weather   GFS         -2.53 -3.69 -1.43            -31.86
- solar       2024   all         GFS + tokens   GFS         -0.46 -0.69 -0.23             -8.44
- solar       2024 ramps         GFS + tokens   GFS         -0.35 -1.03  0.35             -4.39
-  wind       2023   all GFS + actual weather   GFS         -1.86 -2.22 -1.51            -16.18
-  wind       2023 ramps GFS + actual weather   GFS         -2.58 -3.62 -1.64            -18.15
-  wind       2023   all         GFS + tokens   GFS         -1.46 -1.97 -0.96            -12.75
-  wind       2023 ramps         GFS + tokens   GFS         -1.75 -2.74 -0.75            -12.30
-  wind       2024   all GFS + actual weather   GFS         -1.71 -2.12 -1.32            -15.94
-  wind       2024 ramps GFS + actual weather   GFS         -1.67 -3.10 -0.36            -13.44
-  wind       2024   all         GFS + tokens   GFS         -0.73 -1.15 -0.32             -6.83
-  wind       2024 ramps         GFS + tokens   GFS         -1.02 -1.74 -0.31             -8.21
+[solar, test 2024] train 26052 h, test 8730 h; mean CF 0.295, test capacity proxy 18332 MW
+  calendar                                                     MAE  8.72%  ramps 15.45%
+  calendar + weather (issue)                                   MAE  6.88%  ramps 10.23%
+  calendar + weather (issue) + GFS                             MAE  5.46%  ramps  8.02%
+  calendar + weather (issue) + GFS + tokens                    MAE  4.94%  ramps  7.36%
+  calendar + weather (issue) + GFS + actual weather            MAE  4.78%  ramps  5.43%
+  calendar + weather (issue) + GFS + full GFS state            MAE  4.68%  ramps  6.11%
+  calendar + weather (issue) + GFS + full GFS state + tokens   MAE  4.65%  ramps  6.06%
+target  test_year hours                         model                minus  dMAE_pct_cap    lo    hi  pct_of_minus_MAE
+ solar       2023   all          GFS + actual weather                  GFS         -0.61 -0.92 -0.33            -12.73
+ solar       2023 ramps          GFS + actual weather                  GFS         -1.58 -2.30 -0.96            -24.79
+ solar       2023   all                  GFS + tokens                  GFS         -0.16 -0.41  0.06             -3.31
+ solar       2023 ramps                  GFS + tokens                  GFS          0.58 -0.16  1.29              9.10
+ solar       2023   all          GFS + full GFS state                  GFS         -0.43 -0.75 -0.15             -9.04
+ solar       2023 ramps          GFS + full GFS state                  GFS         -0.74 -1.57  0.13            -11.63
+ solar       2023   all          GFS + actual weather GFS + full GFS state         -0.18 -0.46  0.10             -4.06
+ solar       2023 ramps          GFS + actual weather GFS + full GFS state         -0.84 -1.68 -0.16            -14.89
+ solar       2023   all GFS + full GFS state + tokens GFS + full GFS state         -0.01 -0.11  0.10             -0.13
+ solar       2023 ramps GFS + full GFS state + tokens GFS + full GFS state          0.18 -0.21  0.53              3.14
+ solar       2024   all          GFS + actual weather                  GFS         -0.67 -0.87 -0.49            -12.34
+ solar       2024 ramps          GFS + actual weather                  GFS         -2.59 -3.76 -1.50            -32.28
+ solar       2024   all                  GFS + tokens                  GFS         -0.52 -0.75 -0.29             -9.52
+ solar       2024 ramps                  GFS + tokens                  GFS         -0.67 -1.26 -0.01             -8.30
+ solar       2024   all          GFS + full GFS state                  GFS         -0.77 -0.98 -0.56            -14.14
+ solar       2024 ramps          GFS + full GFS state                  GFS         -1.91 -2.88 -1.02            -23.85
+ solar       2024   all          GFS + actual weather GFS + full GFS state          0.10 -0.09  0.29              2.09
+ solar       2024 ramps          GFS + actual weather GFS + full GFS state         -0.68 -1.32 -0.02            -11.07
+ solar       2024   all GFS + full GFS state + tokens GFS + full GFS state         -0.03 -0.15  0.08             -0.74
+ solar       2024 ramps GFS + full GFS state + tokens GFS + full GFS state         -0.05 -0.38  0.32             -0.75
+  wind       2023   all          GFS + actual weather                  GFS         -1.84 -2.17 -1.50            -16.06
+  wind       2023 ramps          GFS + actual weather                  GFS         -2.29 -3.28 -1.37            -16.28
+  wind       2023   all                  GFS + tokens                  GFS         -1.28 -1.80 -0.80            -11.22
+  wind       2023 ramps                  GFS + tokens                  GFS         -1.28 -2.22 -0.35             -9.11
+  wind       2023   all          GFS + full GFS state                  GFS         -1.88 -2.43 -1.37            -16.45
+  wind       2023 ramps          GFS + full GFS state                  GFS         -3.12 -4.42 -1.82            -22.19
+  wind       2023   all          GFS + actual weather GFS + full GFS state          0.04 -0.39  0.52              0.47
+  wind       2023 ramps          GFS + actual weather GFS + full GFS state          0.83 -0.32  2.07              7.60
+  wind       2023   all GFS + full GFS state + tokens GFS + full GFS state         -0.27 -0.50 -0.04             -2.78
+  wind       2023 ramps GFS + full GFS state + tokens GFS + full GFS state         -0.19 -0.68  0.33             -1.78
+  wind       2024   all          GFS + actual weather                  GFS         -1.69 -2.11 -1.29            -15.84
+  wind       2024 ramps          GFS + actual weather                  GFS         -1.88 -3.25 -0.53            -14.85
+  wind       2024   all                  GFS + tokens                  GFS         -0.62 -1.04 -0.22             -5.87
+  wind       2024 ramps                  GFS + tokens                  GFS         -1.20 -1.99 -0.42             -9.51
+  wind       2024   all          GFS + full GFS state                  GFS         -1.77 -2.18 -1.37            -16.61
+  wind       2024 ramps          GFS + full GFS state                  GFS         -2.22 -3.09 -1.42            -17.51
+  wind       2024   all          GFS + actual weather GFS + full GFS state          0.08 -0.32  0.50              0.92
+  wind       2024 ramps          GFS + actual weather GFS + full GFS state          0.34 -0.75  1.40              3.22
+  wind       2024   all GFS + full GFS state + tokens GFS + full GFS state          0.09 -0.11  0.29              0.97
+  wind       2024 ramps GFS + full GFS state + tokens GFS + full GFS state         -0.06 -0.44  0.35             -0.53

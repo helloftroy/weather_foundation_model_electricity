@@ -3178,7 +3178,7 @@ Caveats: one seed; PCA-50 for every readout; GFS box and tokens use the
 same box; the forecast state is at the target time, the tokens come from
 Prithvi's one-day-ahead step.
 
-### ERCOT wind and solar: headroom beyond GFS (2026-11-04, partial)
+### ERCOT wind and solar: headroom beyond GFS (2026-11-04) -- decision: stop
 
 Question: is there weather signal left beyond GFS for ERCOT wind and solar
 generation, and do tokens recover it? Decision rule, set beforehand: go on
@@ -3188,31 +3188,65 @@ of it beyond (4). Target: EIA-930 ERCO hourly wind / solar as a capacity
 factor (capacity = trailing 90-day 99th percentile, ending 24 h before the
 target). Same CatBoost and year-ahead folds; no past generation in the
 base. Areas: wind West + Panhandle, solar West (tokens, MERRA-2) or
-West + Far West (GFS). `local/ercot_renewables_benchmark.py`,
+West + Far West (GFS, full GFS state). `local/ercot_renewables_benchmark.py
+--gfs-full data/gfs/gfs_full_state_texas_features.npz`,
 `results/ercot/renewables/`, log `results/ercot_renewables.log`.
 
 MAE in % of capacity, all hours / top-5% 3-h ramps (2023; 2024):
 
 | | wind | solar |
 |---|---|---|
-| calendar | 25.0 / 23.6; 24.4 / 20.4 | 8.8 / 13.4; 8.8 / 15.5 |
-| + weather at issue | 17.5 / 18.4; 18.4 / 18.8 | 6.8 / 9.7; 7.0 / 10.6 |
-| + GFS (10 m wind, shortwave) | 11.5 / 14.2; 10.7 / 12.4 | 4.8 / 6.2; 5.5 / 7.9 |
-| + tokens | 10.0 / 12.4; 10.0 / 11.4 | 4.6 / 6.9; 5.0 / 7.6 |
-| + actual weather (ceiling) | 9.6 / 11.6; 9.0 / 10.8 | 4.2 / 4.9; 4.8 / 5.4 |
+| calendar | 25.1 / 23.0; 24.3 / 20.2 | 8.8 / 13.7; 8.7 / 15.5 |
+| + weather at issue | 17.4 / 18.1; 18.6 / 18.9 | 6.8 / 9.8; 6.9 / 10.2 |
+| (3) + GFS (10 m wind, shortwave) | 11.5 / 14.1; 10.7 / 12.7 | 4.8 / 6.4; 5.5 / 8.0 |
+| (4) + full GFS state | 9.6 / 10.9; 8.9 / 10.4 | 4.4 / 5.6; 4.7 / 6.1 |
+| (5) + tokens (on 3) | 10.2 / 12.8; 10.0 / 11.5 | 4.6 / 7.0; 4.9 / 7.4 |
+| (4) + tokens | 9.3 / 10.7; 9.0 / 10.4 | 4.3 / 5.8; 4.7 / 6.1 |
+| (6) + actual weather (ceiling) | 9.6 / 11.8; 9.0 / 10.8 | 4.2 / 4.8; 4.8 / 5.4 |
 
-All hours, vs GFS (95% week-block bootstrap):
-- wind, ceiling: -1.86 [-2.22, -1.51] (-16%) and -1.71 [-2.12, -1.32] (-16%);
-  tokens: -1.46 [-1.97, -0.96] (-13%) and -0.73 [-1.15, -0.32] (-7%), so
-  tokens close 78% / 43% of the gap to the ceiling.
-- solar, ceiling: -0.61 (-13%) and -0.73 (-13%); tokens -0.14 [-0.36, +0.07]
-  and -0.46 [-0.69, -0.23]; on ramps the ceiling gap is 22-32% and tokens
-  do not help (+0.68 / -0.35, n.s.).
+Paired, 95% week-block bootstrap, % of the reference MAE:
+- Wind: the full GFS state reaches the ceiling. Ceiling - (4): +0.5% and
+  +0.9% (n.s.; ramps +7.6%, +3.2%, n.s.). Tokens on (4): -2.8%
+  [-5.2, -0.4] in 2023, +1.0% in 2024; ramps n.s. Over the 10 m GFS
+  block alone tokens look large (-11% / -6%), but the full state does
+  better (-16% / -17%).
+- Solar: ceiling - (4) is -4.1% (n.s.) and +2.1% on all hours; on ramps
+  -14.9% [-28, -3] and -11.1% [-22, 0]. Tokens on (4): -0.1%, -0.7%
+  (n.s.), ramps +3.1%, -0.8% (n.s.).
+- Decision: fails. No 15-20% gap between the full state and the ceiling
+  for wind; solar has a gap only on ramps (11-15%), and tokens recover none
+  of it. Stop; supplementary result: "In wind and solar, the full GFS state
+  captures the weather signal; the tokens add nothing beyond it." Caveat:
+  MERRA-2 is coarser than GFS, so the ceiling may understate local-wind
+  headroom.
 
-Not yet decidable: the rule compares against the full GFS state (4),
-which is pending (Texas GFS-full cluster jobs). The GFS block here is weak
-for wind (10 m only, no hub-height wind), so the full state (which has
-1000-925 hPa winds and cloud) may close much of the 16% wind gap.
+### ERCOT price: full GFS state control (2026-11-04)
+
+Same control as ISO-NE ("Full GFS state control"), at all six ERCOT hubs,
+Uri fortnight dropped from training: GFS full state over the ERCOT box
+(26-36.5 N, 106.5-93.5 W), box mean PCA-50 in the loop, or gridded PCA-50
+(150 x 22 x 27; fold bases keep 63.9% / 63.6%). `local/ercot_price_benchmark.py
+--exclude-uri --threads 4 --gfs-full data/gfs/gfs_full_state_texas_features.npz`,
+`results/ercot/gfs_full/` (contrasts `ercot_gfs_full_contrasts.csv`), log
+`results/ercot_gfs_full.log`.
+
+Hub average, MAE $/MWh (2023 / 2024): GFS 31.52 / 14.66; + tokens
+29.51 / 13.52; + input state 30.18 / 14.12; + GFS full box 30.30 / 14.80;
++ GFS full grid 29.78 / 14.61; box + tokens 29.94 / 13.57; grid + tokens
+29.93 / 13.63. Paired, % of GFS MAE (hub average):
+- tokens - box: -2.5% [-4.5, -0.5] and -8.8% [-13.4, -4.0];
+- tokens - grid: -0.8% [-3.1, +1.3] and -7.5% [-13.6, -1.9];
+- box + tokens - box: -1.2% (n.s.) and -8.5% [-12.6, -4.1];
+- grid + tokens - grid: +0.5% (n.s.) and -6.7% [-12.7, -1.0].
+Across the 12 hub-years, tokens beat the box state significantly in 6,
+the grid state in 1; adding tokens to the box state is significant in 4,
+to the grid state in 2.
+- Reading: unlike ISO-NE, the gridded state is the stronger GFS readout in
+  ERCOT, and it matches the tokens in most hub-years; the token edge
+  rests mainly on 2024 at the hub average (and North / Panhandle, where
+  2024 MAE moves by $1-4 between feature sets, so it is noisy). Same
+  overall message as ISO-NE: a full state description gets most of the
+  gain; any Prithvi-specific extra is year-dependent.
 
 ### Sample efficiency: tokens vs the raw state with fewer labels (2026-11-03)
 

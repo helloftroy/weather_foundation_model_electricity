@@ -1,0 +1,230 @@
+
+[HB_NORTH, test 2023] train 16889 h, test 8706 h; test price mean $55.74, median $21.55, max $4200
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  31.58  median $  6.73  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  29.60  median $  4.91  R2  0.28
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  30.66  median $  5.60  R2  0.27
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  29.91  median $  5.72  R2  0.29
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  29.78  median $  5.44  R2  0.27
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  29.42  median $  4.89  R2  0.28
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  29.53  median $  4.91  R2  0.28
+
+[HB_NORTH, test 2024] train 25595 h, test 8730 h; test price mean $27.10, median $18.58, max $2225
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  16.73  median $  5.29  R2  0.01
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  14.20  median $  5.16  R2  0.18
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  15.12  median $  4.83  R2  0.12
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  15.65  median $  5.11  R2  0.06
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  13.98  median $  4.88  R2  0.15
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  14.30  median $  4.96  R2  0.16
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  12.98  median $  4.75  R2  0.18
+
+[HB_HOUSTON, test 2023] train 16889 h, test 8706 h; test price mean $57.55, median $22.80, max $4188
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  33.29  median $  6.26  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  30.40  median $  4.61  R2  0.27
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  30.78  median $  4.80  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  31.06  median $  5.46  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  30.89  median $  5.41  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  31.03  median $  5.20  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  30.31  median $  4.43  R2  0.26
+
+[HB_HOUSTON, test 2024] train 25595 h, test 8730 h; test price mean $28.31, median $19.75, max $2215
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  14.74  median $  4.75  R2  0.01
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  13.95  median $  4.82  R2  0.12
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  13.83  median $  4.97  R2  0.09
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  15.31  median $  4.69  R2  0.01
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  14.22  median $  4.81  R2  0.08
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  13.52  median $  4.69  R2  0.12
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  13.66  median $  4.80  R2  0.09
+
+[HB_SOUTH, test 2023] train 16889 h, test 8706 h; test price mean $54.74, median $22.59, max $4171
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  31.58  median $  5.72  R2  0.20
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  29.68  median $  4.70  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  30.68  median $  4.85  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  30.08  median $  4.68  R2  0.23
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  29.49  median $  4.61  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  29.40  median $  4.61  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  29.25  median $  4.36  R2  0.24
+
+[HB_SOUTH, test 2024] train 25595 h, test 8730 h; test price mean $28.14, median $19.82, max $2210
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  14.81  median $  4.57  R2 -0.09
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  13.83  median $  5.16  R2  0.06
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  13.99  median $  4.94  R2  0.12
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  14.02  median $  4.82  R2  0.08
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  13.69  median $  4.68  R2  0.11
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  13.49  median $  5.01  R2  0.16
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  13.55  median $  4.86  R2  0.09
+
+[HB_WEST, test 2023] train 16889 h, test 8706 h; test price mean $56.72, median $23.29, max $4207
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  31.98  median $  6.85  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  30.77  median $  5.70  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  31.33  median $  6.08  R2  0.29
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  30.81  median $  6.07  R2  0.27
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  31.09  median $  5.73  R2  0.28
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  31.02  median $  5.77  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  30.70  median $  5.62  R2  0.27
+
+[HB_WEST, test 2024] train 25595 h, test 8730 h; test price mean $28.97, median $20.44, max $2236
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  15.93  median $  6.01  R2  0.05
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  15.31  median $  5.97  R2  0.11
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  15.57  median $  6.31  R2  0.15
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  15.15  median $  6.08  R2  0.21
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  13.96  median $  5.56  R2  0.22
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  15.24  median $  6.09  R2  0.15
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  14.42  median $  5.85  R2  0.19
+
+[HB_PAN, test 2023] train 16889 h, test 8706 h; test price mean $50.06, median $19.02, max $4199
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  33.66  median $  7.72  R2  0.22
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  32.20  median $  7.07  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  32.05  median $  6.59  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  32.09  median $  7.01  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  31.82  median $  6.66  R2  0.24
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  31.63  median $  6.38  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  31.57  median $  6.47  R2  0.24
+
+[HB_PAN, test 2024] train 25595 h, test 8730 h; test price mean $21.17, median $15.23, max $2218
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  18.99  median $  7.83  R2  0.03
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  15.59  median $  7.01  R2  0.16
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  17.11  median $  7.42  R2  0.10
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  18.47  median $  7.70  R2  0.05
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  15.31  median $  6.88  R2  0.20
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  15.60  median $  6.98  R2  0.20
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  14.92  median $  6.63  R2  0.22
+
+[HB_HUBAVG, test 2023] train 16889 h, test 8706 h; test price mean $56.19, median $22.64, max $4192
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  31.52  median $  6.34  R2  0.22
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  29.51  median $  4.58  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  30.18  median $  5.07  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  30.30  median $  5.06  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  29.78  median $  4.87  R2  0.25
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  29.94  median $  4.79  R2  0.26
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  29.93  median $  4.82  R2  0.25
+
+[HB_HUBAVG, test 2024] train 25595 h, test 8730 h; test price mean $28.13, median $19.81, max $2221
+  calendar + past prices + Henry Hub + weather (issue) + GFS area                                 MAE $  14.66  median $  5.44  R2  0.11
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens                MAE $  13.52  median $  4.81  R2  0.16
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + input state                   MAE $  14.12  median $  4.92  R2  0.09
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state                MAE $  14.80  median $  5.18  R2  0.06
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid                 MAE $  14.61  median $  4.66  R2  0.02
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens MAE $  13.57  median $  4.78  R2  0.13
+  calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens MAE $  13.63  median $  4.79  R2  0.13
+
+== HB_HOUSTON, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 33.29          11.11         116.25       430.23              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 30.40          10.63         110.33       427.19            -2.89     [-3.97, -1.94]
+                    weather (issue) + GFS area + input state 30.78          13.02         112.27       426.55            -2.50     [-3.56, -1.51]
+                 weather (issue) + GFS area + GFS full state 31.06          12.38         111.38       425.46            -2.22     [-2.98, -1.52]
+                  weather (issue) + GFS area + GFS full grid 30.89          10.97         111.93       420.23            -2.39     [-3.34, -1.52]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 31.03          11.49         112.06       430.11            -2.26     [-3.30, -1.25]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 30.31          10.98         110.96       421.75            -2.98     [-4.15, -1.85]
+
+== HB_HOUSTON, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 14.74          49.64          46.11       109.56              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 13.95          61.52          35.51        99.80            -0.79     [-2.02, +0.41]
+                    weather (issue) + GFS area + input state 13.83          61.53          46.91       101.68            -0.91     [-2.31, +0.38]
+                 weather (issue) + GFS area + GFS full state 15.31          50.20          57.56       108.44             0.57     [-0.02, +1.17]
+                  weather (issue) + GFS area + GFS full grid 14.22          53.69          53.14       106.65            -0.51     [-1.53, +0.29]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 13.52          58.10          38.98        99.62            -1.22     [-2.54, +0.04]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 13.66          65.99          26.92       106.98            -1.07     [-2.43, +0.46]
+
+== HB_HUBAVG, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 31.52          14.05         100.03       435.16              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 29.51           9.87          96.45       428.24            -2.01     [-2.99, -1.08]
+                    weather (issue) + GFS area + input state 30.18          11.33          98.45       424.19            -1.34     [-2.20, -0.54]
+                 weather (issue) + GFS area + GFS full state 30.30          15.36          98.53       424.20            -1.22     [-2.08, -0.50]
+                  weather (issue) + GFS area + GFS full grid 29.78          12.15          97.64       421.07            -1.74     [-2.67, -0.85]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 29.94          12.69          96.94       424.80            -1.58     [-2.71, -0.51]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 29.93          10.97          98.15       426.73            -1.59     [-2.52, -0.67]
+
+== HB_HUBAVG, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 14.66          40.12          46.45       103.24              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 13.52          48.17          44.26       103.18            -1.14     [-2.12, -0.08]
+                    weather (issue) + GFS area + input state 14.12          49.84          39.99       106.31            -0.54     [-1.62, +0.62]
+                 weather (issue) + GFS area + GFS full state 14.80          48.15          48.94       109.15             0.15     [-0.85, +1.21]
+                  weather (issue) + GFS area + GFS full grid 14.61          48.79          48.81       110.68            -0.05     [-1.29, +1.27]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 13.57          45.61          37.85       103.24            -1.09     [-2.11, +0.02]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 13.63          49.44          37.82       107.49            -1.03     [-2.26, +0.28]
+
+== HB_NORTH, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 31.58          14.59         122.48       418.46              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 29.60          12.56         121.39       420.25            -1.98     [-3.02, -0.98]
+                    weather (issue) + GFS area + input state 30.66          15.32         123.54       419.93            -0.92     [-1.79, -0.02]
+                 weather (issue) + GFS area + GFS full state 29.91          19.56         118.59       415.73            -1.67     [-2.74, -0.71]
+                  weather (issue) + GFS area + GFS full grid 29.78          16.68         122.04       418.81            -1.80     [-2.64, -0.96]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 29.42          17.37         120.48       418.19            -2.16     [-3.35, -1.01]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 29.53          15.00         121.89       418.78            -2.05     [-3.07, -1.00]
+
+== HB_NORTH, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 16.73          48.59          83.57       118.54              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 14.20          50.90          48.95       101.21            -2.52     [-4.19, -0.98]
+                    weather (issue) + GFS area + input state 15.12          45.10          67.86       103.64            -1.61     [-2.59, -0.63]
+                 weather (issue) + GFS area + GFS full state 15.65          44.18          73.51       108.58            -1.08     [-2.11, -0.13]
+                  weather (issue) + GFS area + GFS full grid 13.98          45.24          52.70       105.57            -2.75     [-4.22, -1.38]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 14.30          47.30          50.66       102.85            -2.42     [-3.96, -0.99]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 12.98          44.24          42.88       101.32            -3.74     [-5.79, -1.95]
+
+== HB_PAN, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 33.66          14.15         102.84       444.24              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 32.20          12.72         101.59       443.05            -1.46     [-2.26, -0.66]
+                    weather (issue) + GFS area + input state 32.05          12.44         100.49       438.29            -1.61     [-2.67, -0.61]
+                 weather (issue) + GFS area + GFS full state 32.09          13.42         101.57       432.03            -1.57     [-2.43, -0.82]
+                  weather (issue) + GFS area + GFS full grid 31.82          12.17         101.73       432.24            -1.84     [-2.66, -1.11]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 31.63          11.39         101.33       436.02            -2.03     [-3.06, -1.03]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 31.57          10.88         101.34       437.74            -2.09     [-2.93, -1.30]
+
+== HB_PAN, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 18.99          45.12          27.00       108.63              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 15.59          38.06          17.96       100.05            -3.40     [-4.96, -1.85]
+                    weather (issue) + GFS area + input state 17.11          41.24          17.81        99.01            -1.88     [-3.45, -0.30]
+                 weather (issue) + GFS area + GFS full state 18.47          41.15          31.68       106.43            -0.53     [-1.44, +0.41]
+                  weather (issue) + GFS area + GFS full grid 15.31          40.16          20.48        97.77            -3.68     [-5.09, -2.34]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 15.60          36.14          22.77       100.36            -3.39     [-4.81, -1.97]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 14.92          40.80          20.02       100.99            -4.08     [-5.74, -2.38]
+
+== HB_SOUTH, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 31.58          11.30          78.19       431.02              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 29.68          10.85          77.97       418.69            -1.90     [-3.19, -0.63]
+                    weather (issue) + GFS area + input state 30.68          12.24          80.78       419.65            -0.90     [-2.11, +0.38]
+                 weather (issue) + GFS area + GFS full state 30.08          16.43          79.40       422.45            -1.50     [-2.48, -0.62]
+                  weather (issue) + GFS area + GFS full grid 29.49          14.02          77.38       415.78            -2.09     [-2.88, -1.28]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 29.40          12.67          78.24       419.12            -2.17     [-3.34, -0.99]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 29.25          11.12          77.68       421.02            -2.33     [-3.44, -1.20]
+
+== HB_SOUTH, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 14.81          50.87          63.56       108.07              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 13.83          52.75          67.56        99.48            -0.98     [-1.86, -0.11]
+                    weather (issue) + GFS area + input state 13.99          52.69          37.53        96.22            -0.82     [-1.79, +0.14]
+                 weather (issue) + GFS area + GFS full state 14.02          44.55          57.17        99.00            -0.79     [-1.56, -0.06]
+                  weather (issue) + GFS area + GFS full grid 13.69          44.50          74.48       103.29            -1.12     [-2.15, -0.20]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 13.49          49.18          50.71        98.89            -1.32     [-2.18, -0.52]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 13.55          51.54          70.35       105.06            -1.26     [-2.20, -0.41]
+
+== HB_WEST, test 2023: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 31.98          14.01          79.83       420.53              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 30.77          11.91          77.20       427.45            -1.21     [-1.91, -0.55]
+                    weather (issue) + GFS area + input state 31.33          13.55          79.82       417.81            -0.66     [-1.44, +0.07]
+                 weather (issue) + GFS area + GFS full state 30.81          17.56          76.63       418.69            -1.17     [-1.91, -0.49]
+                  weather (issue) + GFS area + GFS full grid 31.09          15.09          78.89       419.31            -0.90     [-1.61, -0.19]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 31.02          15.70          77.82       428.01            -0.97     [-1.66, -0.25]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 30.70          13.52          77.36       425.79            -1.29     [-2.05, -0.53]
+
+== HB_WEST, test 2024: MAE ($/MWh); difference vs '+ old weather + GFS' (95% week bootstrap)
+                                                 feature_set   MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci
+                                  weather (issue) + GFS area 15.93          61.73          30.23       111.15              NaN                NaN
+                 weather (issue) + GFS area + Prithvi tokens 15.31          62.72          26.82       111.24            -0.62     [-1.30, +0.05]
+                    weather (issue) + GFS area + input state 15.57          64.11          28.07       109.77            -0.36     [-1.20, +0.50]
+                 weather (issue) + GFS area + GFS full state 15.15          54.16          31.07       102.64            -0.78     [-1.71, +0.10]
+                  weather (issue) + GFS area + GFS full grid 13.96          55.67          28.78       102.45            -1.97     [-2.85, -1.18]
+weather (issue) + GFS area + GFS full state + Prithvi tokens 15.24          60.00          32.74       107.96            -0.70     [-1.46, +0.04]
+ weather (issue) + GFS area + GFS full grid + Prithvi tokens 14.42          62.90          29.69       109.22            -1.52     [-2.35, -0.72]
+
+Wrote results/ercot/gfs_full

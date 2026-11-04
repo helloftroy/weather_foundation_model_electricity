@@ -1,0 +1,85 @@
+hub,test_year,feature_set,mae,median_ae,r2,rmse,n_test_hours,exclude_uri,loss,offer_cap
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,31.58020185365753,6.730974845521709,0.2523318441179343,189.65415269251054,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,29.600067173471324,4.912423121268954,0.2765746992018112,186.55408416128472,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,30.657422829879806,5.599438646778976,0.27129294805785487,187.2338642964367,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,29.911644107432092,5.722467584211769,0.2887040112789826,184.98354346047157,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,29.77708335696374,5.435154216767747,0.2650430295500926,188.03507651245013,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,29.4237146290042,4.888020358016598,0.28236464733220734,185.80603983036283,8706,True,RMSE,none
+HB_NORTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,29.528881762409522,4.907997048362709,0.27759968009498903,186.42187828608039,8706,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,16.72646874744629,5.286250584769325,0.006782481308046928,62.101450320285124,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,14.203667904204003,5.1627903981279335,0.17838876012372462,56.48234812098259,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,15.116354829372685,4.828350706885942,0.12184361900392238,58.393631914503196,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,15.647378701375757,5.112731528598882,0.056770757937895766,60.51850421660367,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,13.981447479557804,4.8798009703239895,0.14509915433756526,57.61524733315716,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,14.302321261627146,4.958883832792904,0.15837972280929757,57.16597992321749,8730,True,RMSE,none
+HB_NORTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,12.984942187474367,4.749053189803536,0.1756040718747206,56.577985008990474,8730,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,33.28689670209846,6.262058846894657,0.24414835727347806,190.43295055242024,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,30.395175156642377,4.610694547748253,0.26766150769427555,187.44754055691251,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,30.783781551922612,4.799698040052862,0.258653343532006,188.59687066826643,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,31.06194187957875,5.464805127879638,0.26142309523149265,188.2442317802605,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,30.89347384482603,5.408393147051961,0.2631331724067675,188.0261781731411,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,31.02798004647799,5.1969926842925,0.2466947557294149,190.11190390450463,8706,True,RMSE,none
+HB_HOUSTON,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,30.30776416092112,4.427597221557994,0.2600896581404787,188.41408453783308,8706,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,14.737821166984528,4.7492736679970555,0.009598511217124739,59.554483307947244,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,13.951350509042022,4.823443407290246,0.11993848577687072,56.1390854693017,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,13.829482013859254,4.974923845255233,0.08589397767459162,57.214631337543835,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,15.310589872832487,4.687988644937241,0.007912077129996087,59.60516578050073,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,14.224729991944267,4.812392402294762,0.07694772235150316,57.49392630307984,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,13.522327743712484,4.686574109734332,0.1248729131866152,55.98148078563045,8730,True,RMSE,none
+HB_HOUSTON,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,13.663550508719135,4.796438235055499,0.08724719001127257,57.17226632838963,8730,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,31.579548878912306,5.718203624558525,0.20489890583900372,189.90665443530085,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,29.676969584328347,4.700322742957294,0.24685441942205266,184.82830186096342,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,30.683689993763025,4.845800482280069,0.2397019068792059,185.70387155090057,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,30.077089218527124,4.682519883293445,0.22610923859815157,187.35653178642752,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,29.491024407547133,4.612944782325609,0.23641658322304682,186.1046615009797,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,29.404706692384874,4.605180307287025,0.239486602817775,185.73016384856066,8706,True,RMSE,none
+HB_SOUTH,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,29.24528762539272,4.359101055339481,0.24253831924229075,185.35714903153524,8706,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,14.809025683536452,4.567639317232467,-0.0878372610003264,60.56708481386635,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,13.827809096323705,5.158698226133061,0.06446141140095274,56.16756009156929,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,13.98525629827153,4.9395097500475025,0.12234627195243475,54.40218045667843,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,14.022859478871744,4.8229114427224875,0.08204232289829327,55.63729855950976,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,13.68962811672724,4.679059159579756,0.10503301306259005,54.93614915599166,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,13.488603206543841,5.011470095796888,0.16320007069794107,53.12091207290492,8730,True,RMSE,none
+HB_SOUTH,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,13.5475170380524,4.864948676617131,0.08884161572308724,55.43086344537687,8730,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,31.983631854439498,6.845804267391464,0.2646153048341482,188.49172532654543,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,30.770547756496224,5.69993062041264,0.2605597004979662,189.0107712003589,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,31.328545400442266,6.077258874243485,0.29314968620419246,184.79861998024614,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,30.808818116108355,6.065074616165394,0.27208022675324484,187.53259122760076,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,31.086564710805966,5.732548416136744,0.2798573097130921,186.52810347036038,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,31.016625356571414,5.76761807665498,0.2575711949610292,189.39233693049647,8706,True,RMSE,none
+HB_WEST,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,30.696437678060555,5.620113677903977,0.2684516865827461,187.99941715406825,8706,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,15.933605737114027,6.00928102938224,0.0470507612700124,63.25282356952334,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,15.314798806166378,5.973628379236054,0.10556746726342148,61.28000990330161,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,15.574342164247287,6.305995248831485,0.1494897286357132,59.756453513486264,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,15.154050988203624,6.080911934865009,0.21220997937096342,57.51091413282498,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,13.962311962671023,5.559305540785447,0.22207755980130972,57.149598408218935,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,15.238210103730777,6.090667475245356,0.15124433447206764,59.6947827980004,8730,True,RMSE,none
+HB_WEST,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,14.415763216945113,5.8529006456042545,0.19453278022970344,58.152577465248896,8730,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,33.660856966929494,7.722940245315895,0.2216657761741877,194.24009599776733,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,32.203970781800386,7.069919555385171,0.23693809205320637,192.3249851427907,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,32.05311471039617,6.593156688552089,0.24151848231598594,191.74688693703357,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,32.08638320284473,7.0097846453320685,0.24674440566088585,191.0851789616513,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,31.81920425737367,6.658109409637932,0.24187809634654545,191.70142568025088,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,31.633769851781008,6.3809811559419805,0.2469214096193615,191.06272654275347,8706,True,RMSE,none
+HB_PAN,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,31.568432882179465,6.4726297606972585,0.24356009025715664,191.48865008830276,8706,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,18.994843697085876,7.828117816494823,0.030640284181822963,63.14526156800706,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,15.593418811184348,7.009270178185561,0.15563537103572977,58.93364447760957,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,17.11122527840241,7.4210003072673345,0.09747755057044827,60.92945444100022,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,18.469046522147668,7.702537374848811,0.05197059791105085,62.44665587927729,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,15.31005404292554,6.8787572579082195,0.2042302935157394,57.21263944597759,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,15.600333960252488,6.980639667789212,0.19979560742718339,57.371836001983084,8730,True,RMSE,none
+HB_PAN,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,14.917087522032432,6.634371633451646,0.2206022888307233,56.62104048625608,8730,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area,31.518480286227373,6.335966710034208,0.22373871924116673,191.799905459912,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,29.510137572388295,4.581633291950041,0.24732198359645519,188.86393863924505,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,30.182705836695625,5.068624558510588,0.25762533730429316,187.56681203029288,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,30.29907742904632,5.062063514021288,0.24941297173850907,188.60141807791683,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,29.775895084834236,4.872638467456187,0.2545391731456216,187.95627953549663,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,29.936102994890046,4.7937889236295455,0.2554680424177196,187.8391431109944,8706,True,RMSE,none
+HB_HUBAVG,2023,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,29.932227168042672,4.8179750076110786,0.249354997748927,188.60870155412488,8706,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area,14.658170311083897,5.436809991611165,0.11218662666301837,57.51294528369788,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + Prithvi tokens,13.516345375933197,4.810184060203648,0.1557690044347988,56.083539405921506,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + input state,14.120926106209964,4.923242157634631,0.08809007491520982,58.288212700063795,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state,14.804869753324512,5.184655877617413,0.05919821621843335,59.20437946159553,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid,14.609660269652888,4.655292837150193,0.020341164243868226,60.41464075048117,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full state + Prithvi tokens,13.56617312914842,4.780527514185693,0.13289214981316977,56.83833225894438,8730,True,RMSE,none
+HB_HUBAVG,2024,calendar + past prices + Henry Hub + weather (issue) + GFS area + GFS full grid + Prithvi tokens,13.632272107026091,4.792783071009956,0.131913637997365,56.870393609739224,8730,True,RMSE,none

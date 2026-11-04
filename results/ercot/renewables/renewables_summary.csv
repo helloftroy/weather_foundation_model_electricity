@@ -1,21 +1,29 @@
 target,test_year,feature_set,MAE_pct_cap,MAE_ramp_pct_cap
-wind,2023,calendar,25.03269833933669,23.631376217882597
-wind,2023,calendar + weather (issue),17.48417043920717,18.3850032667392
-wind,2023,calendar + weather (issue) + GFS,11.470453042290597,14.190355059710129
-wind,2023,calendar + weather (issue) + GFS + tokens,10.007678099280984,12.444806129467013
-wind,2023,calendar + weather (issue) + GFS + actual weather,9.61432755977223,11.614141310277823
-wind,2024,calendar,24.435273918791054,20.395611445698606
-wind,2024,calendar + weather (issue),18.42186816670613,18.83410365996196
-wind,2024,calendar + weather (issue) + GFS,10.713420946567203,12.430306803067202
-wind,2024,calendar + weather (issue) + GFS + tokens,9.98122637905664,11.410383301946585
-wind,2024,calendar + weather (issue) + GFS + actual weather,9.005615897761388,10.759874079845833
-solar,2023,calendar,8.757983711197339,13.416540193238749
-solar,2023,calendar + weather (issue),6.762595371673066,9.66796883560656
-solar,2023,calendar + weather (issue) + GFS,4.775483717968479,6.231223985695032
-solar,2023,calendar + weather (issue) + GFS + tokens,4.637764420242998,6.915277567719737
-solar,2023,calendar + weather (issue) + GFS + actual weather,4.166598998948772,4.8835068999663305
-solar,2024,calendar,8.748336154651737,15.525688068315398
-solar,2024,calendar + weather (issue),6.954709169738856,10.624833934200407
-solar,2024,calendar + weather (issue) + GFS,5.474736836685686,7.936380756228574
-solar,2024,calendar + weather (issue) + GFS + tokens,5.012523709467337,7.5882617777873005
-solar,2024,calendar + weather (issue) + GFS + actual weather,4.746059254044183,5.407524552195763
+wind,2023,calendar,25.046837027339333,22.986158531087405
+wind,2023,calendar + weather (issue),17.424755569524365,18.063529896193614
+wind,2023,calendar + weather (issue) + GFS,11.449296290953082,14.05715541845964
+wind,2023,calendar + weather (issue) + GFS + tokens,10.164857854978296,12.777051068813279
+wind,2023,calendar + weather (issue) + GFS + actual weather,9.61023840704657,11.769120279441351
+wind,2023,calendar + weather (issue) + GFS + full GFS state,9.565599555261494,10.938223866343082
+wind,2023,calendar + weather (issue) + GFS + full GFS state + tokens,9.299521375480387,10.743432542208307
+wind,2024,calendar,24.268451456728265,20.159540416609822
+wind,2024,calendar + weather (issue),18.559797866760555,18.891517612995894
+wind,2024,calendar + weather (issue) + GFS,10.649267370231327,12.655142077435949
+wind,2024,calendar + weather (issue) + GFS + tokens,10.024333645235377,11.451680711837676
+wind,2024,calendar + weather (issue) + GFS + actual weather,8.962110879983392,10.775248689852841
+wind,2024,calendar + weather (issue) + GFS + full GFS state,8.880738064183621,10.438877888969973
+wind,2024,calendar + weather (issue) + GFS + full GFS state + tokens,8.967292584945488,10.383840195037225
+solar,2023,calendar,8.809837049035243,13.717527115819314
+solar,2023,calendar + weather (issue),6.7976330189035545,9.774963547038356
+solar,2023,calendar + weather (issue) + GFS,4.778456179943237,6.378265805661835
+solar,2023,calendar + weather (issue) + GFS + tokens,4.620333219625168,6.958371099446409
+solar,2023,calendar + weather (issue) + GFS + actual weather,4.1703278176140435,4.796985124708224
+solar,2023,calendar + weather (issue) + GFS + full GFS state,4.346620887698268,5.636426338133854
+solar,2023,calendar + weather (issue) + GFS + full GFS state + tokens,4.340829389877915,5.813605769725489
+solar,2024,calendar,8.719025406804702,15.446183652601857
+solar,2024,calendar + weather (issue),6.878630173352832,10.225296293819413
+solar,2024,calendar + weather (issue) + GFS,5.455319250466254,8.023965222084717
+solar,2024,calendar + weather (issue) + GFS + tokens,4.936050803214912,7.35770160555211
+solar,2024,calendar + weather (issue) + GFS + actual weather,4.781925771145942,5.43416243464682
+solar,2024,calendar + weather (issue) + GFS + full GFS state,4.684178268907939,6.110432319173528
+solar,2024,calendar + weather (issue) + GFS + full GFS state + tokens,4.6497477992433325,6.064860933457887
