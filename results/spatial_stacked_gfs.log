@@ -1,0 +1,58 @@
+
+[test 2023, base gfs] train 17214 h, test 8706 h; heat-rate target mean 13.3, sd 8.5 MMBtu/MWh
+  folds: fit rows 10494, 9893, 9636, 9702, 10321 (buffer 3 d)
+  GFS (CatBoost)                                   MAE   8.41
+  GFS + pooled tokens PCA-50 (CatBoost, headline)  MAE   7.54
+  head context only (control)     params   1425; OOF corr with heat rate 0.695, test 0.725; CatBoost MAE   8.33
+  head tokens_pca50 pooled        params  24657; OOF corr with heat rate 0.723, test 0.696; CatBoost MAE   8.47
+  tokens: 64 per-patch components keep 62.5% (31 s)
+  head tokens grid                params  81425; OOF corr with heat rate 0.730, test 0.669; CatBoost MAE   8.23
+  head tokens pooled              params  25105; OOF corr with heat rate 0.693, test 0.613; CatBoost MAE   8.23
+  merra: 64 per-patch components keep 92.2% (6 s)
+  head merra grid                 params  81425; OOF corr with heat rate 0.735, test 0.659; CatBoost MAE   8.45
+  head merra pooled               params  25105; OOF corr with heat rate 0.667, test 0.629; CatBoost MAE   8.75
+  gfs_full: 64 per-patch components keep 97.2% (1 s)
+  head gfs_full grid              params  81425; OOF corr with heat rate 0.762, test 0.711; CatBoost MAE   8.50
+  head gfs_full pooled            params  25105; OOF corr with heat rate 0.747, test 0.698; CatBoost MAE   8.44
+
+[test 2024, base gfs] train 25920 h, test 8730 h; heat-rate target mean 13.7, sd 9.2 MMBtu/MWh
+  folds: fit rows 14747, 14766, 15271, 15336, 15234 (buffer 3 d)
+  GFS (CatBoost)                                   MAE   7.60
+  GFS + pooled tokens PCA-50 (CatBoost, headline)  MAE   6.77
+  head context only (control)     params   1425; OOF corr with heat rate 0.705, test 0.601; CatBoost MAE   8.00
+  head tokens_pca50 pooled        params  24657; OOF corr with heat rate 0.571, test 0.595; CatBoost MAE   7.75
+  tokens: 64 per-patch components keep 62.4% (37 s)
+  head tokens grid                params  81425; OOF corr with heat rate 0.693, test 0.651; CatBoost MAE   7.70
+  head tokens pooled              params  25105; OOF corr with heat rate 0.643, test 0.621; CatBoost MAE   7.80
+  merra: 64 per-patch components keep 92.3% (6 s)
+  head merra grid                 params  81425; OOF corr with heat rate 0.677, test 0.604; CatBoost MAE   7.64
+  head merra pooled               params  25105; OOF corr with heat rate 0.600, test 0.587; CatBoost MAE   8.16
+  gfs_full: 64 per-patch components keep 97.1% (1 s)
+  head gfs_full grid              params  81425; OOF corr with heat rate 0.718, test 0.656; CatBoost MAE   7.51
+  head gfs_full pooled            params  25105; OOF corr with heat rate 0.699, test 0.598; CatBoost MAE   7.59
+test_year                                                                                                        2023                  2024
+model                                           minus                                                                                      
+GFS + pooled tokens PCA-50 (CatBoost, headline) GFS (CatBoost)                                   -0.87 [-1.39, -0.41]  -0.83 [-1.23, -0.44]
+GFS + head: context only (control)              GFS (CatBoost)                                   -0.08 [-0.29, +0.12]  +0.40 [+0.17, +0.63]
+GFS + head: tokens_pca50 pooled                 GFS (CatBoost)                                   +0.06 [-0.24, +0.32]  +0.15 [-0.11, +0.43]
+                                                GFS + head: context only (control)               +0.14 [-0.17, +0.42]  -0.25 [-0.58, +0.11]
+                                                GFS + pooled tokens PCA-50 (CatBoost, headline)  +0.93 [+0.48, +1.43]  +0.98 [+0.54, +1.47]
+GFS + head: tokens grid                         GFS (CatBoost)                                   -0.18 [-0.51, +0.10]  +0.09 [-0.12, +0.31]
+                                                GFS + head: context only (control)               -0.10 [-0.45, +0.21]  -0.31 [-0.60, +0.00]
+                                                GFS + head: merra grid                           -0.21 [-0.37, -0.05]  +0.05 [-0.22, +0.31]
+                                                GFS + head: gfs_full grid                        -0.27 [-0.53, -0.03]  +0.19 [-0.10, +0.51]
+                                                GFS + head: tokens pooled                        +0.00 [-0.15, +0.15]  -0.10 [-0.32, +0.10]
+GFS + head: tokens pooled                       GFS (CatBoost)                                   -0.18 [-0.47, +0.05]  +0.20 [+0.01, +0.39]
+                                                GFS + head: context only (control)               -0.10 [-0.40, +0.18]  -0.20 [-0.41, +0.02]
+                                                GFS + head: merra pooled                         -0.52 [-0.81, -0.28]  -0.36 [-0.86, +0.06]
+                                                GFS + head: gfs_full pooled                      -0.21 [-0.43, -0.00]  +0.21 [-0.10, +0.55]
+GFS + head: merra grid                          GFS (CatBoost)                                   +0.04 [-0.24, +0.26]  +0.04 [-0.19, +0.29]
+                                                GFS + head: context only (control)               +0.12 [-0.20, +0.42]  -0.36 [-0.66, -0.03]
+                                                GFS + head: merra pooled                         -0.30 [-0.64, -0.02]  -0.52 [-0.92, -0.17]
+GFS + head: merra pooled                        GFS (CatBoost)                                   +0.34 [+0.06, +0.63]  +0.56 [+0.17, +1.04]
+                                                GFS + head: context only (control)               +0.42 [+0.13, +0.72]  +0.16 [-0.33, +0.75]
+GFS + head: gfs_full grid                       GFS (CatBoost)                                   +0.09 [-0.17, +0.35]  -0.10 [-0.35, +0.14]
+                                                GFS + head: context only (control)               +0.17 [-0.04, +0.38]  -0.49 [-0.83, -0.19]
+                                                GFS + head: gfs_full pooled                      +0.06 [-0.15, +0.28]  -0.08 [-0.31, +0.14]
+GFS + head: gfs_full pooled                     GFS (CatBoost)                                   +0.03 [-0.23, +0.29]  -0.01 [-0.26, +0.21]
+                                                GFS + head: context only (control)               +0.11 [-0.16, +0.38]  -0.41 [-0.74, -0.11]

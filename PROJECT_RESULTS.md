@@ -641,8 +641,30 @@ done
   residuals (sd 19-21, carrying 2022's gas regime) do not transfer to the
   test years. Uninformative about tokens vs raw state (MAE 2023 / 2024:
   base 8.41 / 7.60; tokens grid conv 9.02 / 7.85; MERRA-2 grid conv
-  9.38 / 7.78; log `results/spatial_head_gfs.log`). Next design: stack the
-  head's out-of-fold output into CatBoost instead of adding it.
+  9.38 / 7.78; log `results/spatial_head_gfs.log`).
+- **Spatial readout heads, second run: positive control failed, so the
+  grid results are uninformative (2026-11-03).** Stacked design
+  (`local/spatial_head_stacked.py`): conv heads predict the gas-normalised
+  target LMP / Henry Hub out of fold (5 interleaved month folds, 3-day
+  buffer, 2 seeds) and their output enters CatBoost as one feature.
+  Positive control, a head on the headline pooled tokens PCA-50: vs GFS
+  +0.06 [-0.24, +0.32] (2023) and +0.15 [-0.11, +0.43] (2024), against
+  the headline's -0.87 / -0.83, i.e. it recovers none of the known gain
+  (worse than the headline by +0.93 / +0.98, both significant). The
+  context-only control is -0.08 / +0.40. Head out-of-fold correlations
+  with the heat rate are 0.57-0.76 for every arm, context only 0.70, so
+  the representations add little through a single scalar. For the record
+  (MAE 2023 / 2024; GFS 8.41 / 7.60): tokens grid 8.23 / 7.70, tokens
+  pooled 8.23 / 7.80, MERRA-2 grid 8.45 / 7.64, MERRA-2 pooled
+  8.75 / 8.16, GFS full grid 8.50 / 7.51, GFS full pooled 8.44 / 7.59.
+  Files: `results/regional/spatial_head/spatial_stacked_gfs_*`, log
+  `results/spatial_stacked_gfs.log`. Likely reasons: squeezing the state
+  into one learned scalar loses what CatBoost uses from 50 features (the
+  token gain may sit in interactions with gas level, which a
+  gas-normalised scalar removes); ~10k fit rows per fold head. Next step
+  if pursued: heads with a multi-dimensional bottleneck (e.g. 8-16 learned
+  features fed to CatBoost), checked against the same positive control
+  first.
 - Full-GFS-state control: done, see "Full GFS state control" below.
 - Prithvi feature sets, once finite embeddings are back.
 - Predicted (not actual) demand as a feature, with out-of-sample

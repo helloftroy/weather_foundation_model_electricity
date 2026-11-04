@@ -7,17 +7,17 @@
   hard days (test 2023): thresholds {'cold_snap_daily_mean_le': 268.4880901077154, 'heat_wave_daily_max_ge': 299.487132483805}; 96 cold-snap and 120 heat-wave test hours
 
 [lmp, test 2023, train 2021-2022] train 17214 h, test 8706 h; test price mean $36.86, sd $26.29
-    exported residuals (gfs): out-of-fold residual MAE 12.29
+    exported rows and features (gfs)
   calendar + past values + known gas + weather (issue) + GFS area             MAE $  8.41   R2  0.63
-    exported residuals (gfs_regional): out-of-fold residual MAE 11.21
+    exported rows and features (gfs_regional)
   calendar + past values + known gas + weather (issue) + GFS area + GFS regional MAE $  7.42   R2  0.70
   pooled tokens: 50 PCs keep 75.4% of the (standardised) variance
   hard days (test 2024): thresholds {'cold_snap_daily_mean_le': 269.8127280211901, 'heat_wave_daily_max_ge': 299.04677542343967}; 312 cold-snap and 336 heat-wave test hours
 
 [lmp, test 2024, train 2021-2023] train 25920 h, test 8730 h; test price mean $41.50, sd $30.40
-    exported residuals (gfs): out-of-fold residual MAE 10.26
+    exported rows and features (gfs)
   calendar + past values + known gas + weather (issue) + GFS area             MAE $  7.60   R2  0.81
-    exported residuals (gfs_regional): out-of-fold residual MAE 9.62
+    exported rows and features (gfs_regional)
   calendar + past values + known gas + weather (issue) + GFS area + GFS regional MAE $  7.58   R2  0.80
 
 == lmp, test 2023: MAE ($/MWh) overall / cold snaps / heat waves / top 5% price hours; difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)
@@ -31,4 +31,3 @@ weather (issue) + GFS area + GFS regional 7.42          77.55          14.98    
 weather (issue) + GFS area + GFS regional 7.58          18.29          21.63        32.74            -0.02     [-0.42, +0.41]                  -0.37           [-7.15, +3.97]
 
 Wrote results/regional/spatial_head
-export exit 0
