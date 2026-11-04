@@ -3211,7 +3211,7 @@ Paired, 95% week-block bootstrap, % of the reference MAE:
   block alone tokens look large (-11% / -6%), but the full state does
   better (-16% / -17%).
 - Solar: ceiling - (4) is -4.1% (n.s.) and +2.1% on all hours; on ramps
-  -14.9% [-28, -3] and -11.1% [-22, 0]. Tokens on (4): -0.1%, -0.7%
+  -14.9% [-30, -3] and -11.1% [-22, 0]. Tokens on (4): -0.1%, -0.7%
   (n.s.), ramps +3.1%, -0.8% (n.s.).
 - Decision: fails. No 15-20% gap between the full state and the ceiling
   for wind; solar has a gap only on ramps (11-15%), and tokens recover none
