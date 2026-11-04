@@ -1,0 +1,29 @@
+target,test_year,feature_set,mae,r2,median_ae,rmse,n_test_hours,n_train_hours
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area,8.48137260124077,0.630587220215183,4.766024253920033,15.97840105550826,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional,7.47415246167421,0.7005191940448485,4.279491518799375,14.386722158479408,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + tokens ne,7.615242529607604,0.6853747752859236,4.358157557829541,14.745996592020928,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne,7.637658928255601,0.6772527387115311,4.334059980487188,14.935117464467766,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS full state box,7.649790469501792,0.6805013146433383,4.309563035177966,14.859763503253756,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid,7.879937603115094,0.6912195171534521,4.5468563236272885,14.608387514900997,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS full state box + tokens ne,7.610820068168514,0.6870766804865365,4.426338617998267,14.70605968166749,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid + tokens ne,7.425678152248487,0.702516383424223,4.273637158692546,14.338670543013468,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + tokens ne,7.282354488604127,0.7113185486628497,4.241553571372348,14.124946119218167,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + MERRA-2 fields ne,7.256026994481411,0.7153311432123346,4.137840286618969,14.026436129275195,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box,7.377768331025546,0.7135248896510094,4.317266715369335,14.070865363147584,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid,7.396878062336326,0.7261800482203015,4.215631386283384,13.756561835335495,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne,7.334644933087802,0.7109360891308818,4.285987299088143,14.134299737468716,8706,17202
+lmp,2023,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne,7.366381905270344,0.717166134474809,4.2870948300479,13.981155447668392,8706,17202
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area,7.547437942041352,0.8076929041308355,4.378106029609466,13.329158984626925,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional,7.464277300652623,0.808310157850915,4.26745909283958,13.307750295731589,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + tokens ne,6.719062504575759,0.8235927783376985,3.7458054546031025,12.766247897922268,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne,7.115808373185178,0.8079852752269215,3.962132972316793,13.319022740978246,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS full state box,6.997677122577378,0.8182171473698331,3.9405272655810855,12.95930020558881,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid,7.200278585730431,0.8070664027093202,3.9771948279251337,13.350853313626132,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS full state box + tokens ne,6.784772681113437,0.8204437203799779,3.7829912818956615,12.879689476992727,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid + tokens ne,6.921859952206944,0.8179740533317778,3.8038502579327726,12.967962398034,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + tokens ne,6.774302120509446,0.8248319668375068,3.7301693374257336,12.721330044438998,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + MERRA-2 fields ne,6.912995936244972,0.8195122096758216,3.8017389185278994,12.913055195196993,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box,7.029573608797731,0.8191670028582824,3.9640235839761004,12.925398260739469,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid,7.188520460980648,0.8115814314915295,4.03318997627448,13.193710284614612,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne,6.913982336472088,0.8172921166832512,3.755124582365811,12.992231085711673,8730,25908
+lmp,2024,calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne,6.880632472522176,0.8204631529560966,3.728686002167491,12.8789925024317,8730,25908

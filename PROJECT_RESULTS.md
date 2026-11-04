@@ -643,18 +643,7 @@ done
   base 8.41 / 7.60; tokens grid conv 9.02 / 7.85; MERRA-2 grid conv
   9.38 / 7.78; log `results/spatial_head_gfs.log`). Next design: stack the
   head's out-of-fold output into CatBoost instead of adding it.
-- **Full-GFS-state control (2026-11-03, code ready, waiting on the cluster
-  download).** Reviewer question: do 50 PCs of the full GFS forecast state
-  over New England match the tokens? 150 fields (HGT, TMP, RH, VVEL, U, V,
-  cloud water, cloud ice, cloud cover on 14 pressure levels mirroring
-  Prithvi's, plus 25 single-level fields), 0.5 deg, 24/27 h forecasts,
-  as box means (PCA-50, like the MERRA-2 fields) and gridded PCA-50 (one
-  basis per fold). Steps: `cluster/sbatch/service/09_download_gfs_full_state.sbatch`
-  per year, then `cluster/sbatch/cpu_morrill/08_gfs_full_state_pca.sbatch`;
-  copy `gfs_full_state_features.npz` to `data/gfs/`; run
-  `local/price_benchmark.py --targets lmp --gas-features henryhub --gfs-full
-  data/gfs/gfs_full_state_features.npz --out-dir results/regional/price_gfs_full`,
-  then `local/gfs_full_contrasts.py`.
+- Full-GFS-state control: done, see "Full GFS state control" below.
 - Prithvi feature sets, once finite embeddings are back.
 - Predicted (not actual) demand as a feature, with out-of-sample
   predictions for the training rows.
@@ -3109,6 +3098,63 @@ Reading:
   The gas link for ISO-NE is consistent with this but not yet tested
   directly; a direct test would split cold-day gains by the Algonquin
   minus Henry Hub basis.
+
+### Full GFS state control (2026-11-03)
+
+Reviewer question: do 50 PCs of the full GFS forecast state over New
+England do as well as the tokens? GFS 0.5 deg, 24/27 h forecasts, 150
+fields (HGT, TMP, RH, VVEL, U, V, cloud water, cloud ice, cloud cover on 14
+pressure levels 1000-50 hPa, plus 25 single-level fields incl. SLP, 2 m
+fields, PWAT, cloud, surface and TOA fluxes, soil, PBL height, CAPE).
+Two readouts, both PCA-50 fitted on training times: "box" = each field
+averaged over the token box (40-48 N, 75-66.25 W), like the MERRA-2 fields
+control; "grid" = all fields x 17 x 18 points (each field weighted equally),
+one basis per fold (keeps 70% of the variance). Raw LMP, Henry Hub known,
+same folds. Scripts: `src/gfs/download_gfs_full_state.py`,
+`src/gfs/gfs_full_state_pca.py` (cluster); `local/price_benchmark.py
+--targets lmp --gas-features henryhub --gfs-full data/gfs/gfs_full_state_features.npz`,
+`local/gfs_full_contrasts.py` -> `results/regional/price_gfs_full/`.
+34,638 usable hours (12 fewer than before: GFS 0.5 deg files missing in
+the archive), so MAEs differ slightly from earlier runs (GFS 8.48 / 7.55).
+
+MAE $/MWh 2023 / 2024, on top of old weather + GFS:
+
+| + ... | MAE | Δ vs GFS 2023 | Δ vs GFS 2024 |
+|---|---|---|---|
+| tokens ne | 7.62 / 6.72 | -0.87 [-1.38, -0.42] | -0.83 [-1.23, -0.44] |
+| MERRA-2 fields ne (issue time) | 7.64 / 7.12 | -0.84 [-1.49, -0.31] | -0.43 [-0.80, -0.09] |
+| GFS full state, box | 7.65 / 7.00 | -0.83 [-1.27, -0.44] | -0.55 [-0.97, -0.14] |
+| GFS full state, grid | 7.88 / 7.20 | -0.60 [-1.05, -0.21] | -0.35 [-0.76, +0.02] |
+| GFS full box + tokens | 7.61 / 6.78 | | |
+| GFS full grid + tokens | 7.43 / 6.92 | | |
+
+Paired contrasts (negative = first better):
+
+| contrast | over GFS 2023 | 2024 | over GFS + regional 2023 | 2024 |
+|---|---|---|---|---|
+| tokens − GFS full box | -0.03 [-0.33, +0.27] | -0.28 [-0.59, +0.04] | -0.10 [-0.34, +0.15] | -0.26 [-0.51, +0.00] |
+| (GFS full box + tokens) − GFS full box | -0.04 [-0.23, +0.13] | -0.21 [-0.47, +0.03] | -0.04 [-0.23, +0.16] | -0.12 [-0.32, +0.12] |
+| tokens − GFS full grid | -0.26 [-0.66, +0.10] | **-0.48 [-0.87, -0.11]** | -0.11 [-0.43, +0.20] | **-0.41 [-0.71, -0.18]** |
+| (GFS full grid + tokens) − GFS full grid | **-0.45 [-0.74, -0.19]** | **-0.28 [-0.49, -0.07]** | -0.03 [-0.21, +0.15] | **-0.31 [-0.46, -0.16]** |
+
+- **A full GFS state description recovers most of the token gain.** The
+  box readout matches the tokens in 2023 (-0.83 vs -0.87) and gives about
+  two thirds of the gain in 2024 (-0.55 vs -0.83). Against it the tokens
+  are not significantly better (2024: -0.28 over GFS, -0.26 over GFS +
+  regional, both intervals touching zero), and adding tokens on top of it
+  adds nothing significant.
+- The gridded PCA (the literal "50 PCs of all fields over New England") is
+  a weaker readout than box means; the tokens do beat it and add to it.
+  So the reviewer's exact control would flatter the tokens; the box version
+  is the fair, stronger control.
+- Reading: most of the price gain is "a full description of the forecast
+  atmosphere helps"; Prithvi is a convenient way to get one. A
+  Prithvi-specific extra of about 0.25 $/MWh (~3-4%) in 2024 is suggestive
+  but not significant. Claim accordingly.
+
+Caveats: one seed; PCA-50 for every readout; GFS box and tokens use the
+same box; the forecast state is at the target time, the tokens come from
+Prithvi's one-day-ahead step.
 
 ### Sample efficiency: tokens vs the raw state with fewer labels (2026-11-03)
 

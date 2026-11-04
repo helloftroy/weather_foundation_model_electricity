@@ -1,0 +1,97 @@
+2021: 8760 hours with a hub price; gas missing for 0
+2022: 8760 hours with a hub price; gas missing for 0
+2023: 8760 hours with a hub price; gas missing for 0
+2024: 8784 hours with a hub price; gas missing for 0
+34638 of 35064 hours usable; heat rate median 11.3 MMBtu/MWh (1-99%: 3.9 to 37.9)
+  GFS full state grid: 50 PCs keep 70.0% of the variance
+  pooled tokens: 50 PCs keep 76.1% of the (standardised) variance
+  tokens ne: 50 PCs keep 76.1% of the (standardised) variance
+  tokens northeast: 50 PCs keep 78.9% of the (standardised) variance
+  tokens wide: 50 PCs keep 80.8% of the (standardised) variance
+  tokens 5 regions: 50 PCs keep 63.0% of the (standardised) variance
+  MERRA-2 fields ne: 50 PCs keep 98.4% of the (standardised) variance
+  decoder fields ne: 50 PCs keep 98.7% of the (standardised) variance
+  MERRA-2 fields wide: 50 PCs keep 98.8% of the (standardised) variance
+  decoder fields wide: 50 PCs keep 99.2% of the (standardised) variance
+  GFS full state box: 50 PCs keep 98.1% of the (standardised) variance
+  hard days (test 2023): thresholds {'cold_snap_daily_mean_le': 268.4880901077154, 'heat_wave_daily_max_ge': 299.487132483805}; 96 cold-snap and 120 heat-wave test hours
+
+[lmp, test 2023, train 2021-2022] train 17202 h, test 8706 h; test price mean $36.86, sd $26.29
+  calendar + past values + known gas + weather (issue) + GFS area             MAE $  8.48   R2  0.63
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional MAE $  7.47   R2  0.70
+  calendar + past values + known gas + weather (issue) + GFS area + tokens ne MAE $  7.62   R2  0.69
+  calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne MAE $  7.64   R2  0.68
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state box MAE $  7.65   R2  0.68
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid MAE $  7.88   R2  0.69
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state box + tokens ne MAE $  7.61   R2  0.69
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid + tokens ne MAE $  7.43   R2  0.70
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + tokens ne MAE $  7.28   R2  0.71
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + MERRA-2 fields ne MAE $  7.26   R2  0.72
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box MAE $  7.38   R2  0.71
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid MAE $  7.40   R2  0.73
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne MAE $  7.33   R2  0.71
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne MAE $  7.37   R2  0.72
+  GFS full state grid: 50 PCs keep 70.1% of the variance
+  pooled tokens: 50 PCs keep 75.4% of the (standardised) variance
+  tokens ne: 50 PCs keep 75.4% of the (standardised) variance
+  tokens northeast: 50 PCs keep 78.2% of the (standardised) variance
+  tokens wide: 50 PCs keep 80.0% of the (standardised) variance
+  tokens 5 regions: 50 PCs keep 61.7% of the (standardised) variance
+  MERRA-2 fields ne: 50 PCs keep 98.3% of the (standardised) variance
+  decoder fields ne: 50 PCs keep 98.7% of the (standardised) variance
+  MERRA-2 fields wide: 50 PCs keep 98.7% of the (standardised) variance
+  decoder fields wide: 50 PCs keep 99.1% of the (standardised) variance
+  GFS full state box: 50 PCs keep 98.0% of the (standardised) variance
+  hard days (test 2024): thresholds {'cold_snap_daily_mean_le': 269.8127280211901, 'heat_wave_daily_max_ge': 299.04677542343967}; 312 cold-snap and 336 heat-wave test hours
+
+[lmp, test 2024, train 2021-2023] train 25908 h, test 8730 h; test price mean $41.50, sd $30.40
+  calendar + past values + known gas + weather (issue) + GFS area             MAE $  7.55   R2  0.81
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional MAE $  7.46   R2  0.81
+  calendar + past values + known gas + weather (issue) + GFS area + tokens ne MAE $  6.72   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + MERRA-2 fields ne MAE $  7.12   R2  0.81
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state box MAE $  7.00   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid MAE $  7.20   R2  0.81
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state box + tokens ne MAE $  6.78   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS full state grid + tokens ne MAE $  6.92   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + tokens ne MAE $  6.77   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + MERRA-2 fields ne MAE $  6.91   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box MAE $  7.03   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid MAE $  7.19   R2  0.81
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne MAE $  6.91   R2  0.82
+  calendar + past values + known gas + weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne MAE $  6.88   R2  0.82
+
+== lmp, test 2023: MAE ($/MWh) overall / cold snaps / heat waves / top 5% price hours; difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)
+                                                                feature_set  MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci  dMAE_vs_ref_cold_snap dMAE_vs_ref_cold_snap_ci
+                                                 weather (issue) + GFS area 8.48          83.87          18.12        41.78              NaN                NaN                    NaN                      NaN
+                                  weather (issue) + GFS area + GFS regional 7.47          77.01          15.73        39.20            -1.01     [-1.52, -0.55]                  -6.86           [-7.56, -4.77]
+                                     weather (issue) + GFS area + tokens ne 7.62          77.12          15.37        39.78            -0.87     [-1.38, -0.42]                  -6.74          [-10.28, +3.87]
+                             weather (issue) + GFS area + MERRA-2 fields ne 7.64          77.01          15.50        39.53            -0.84     [-1.49, -0.31]                  -6.86           [-7.77, -4.13]
+                            weather (issue) + GFS area + GFS full state box 7.65          76.43          15.59        37.98            -0.83     [-1.27, -0.44]                  -7.43           [-9.43, -6.77]
+                           weather (issue) + GFS area + GFS full state grid 7.88          71.11          14.65        35.23            -0.60     [-1.05, -0.21]                 -12.76         [-13.58, -10.28]
+                weather (issue) + GFS area + GFS full state box + tokens ne 7.61          75.17          13.80        37.82            -0.87     [-1.41, -0.40]                  -8.69           [-9.18, -7.23]
+               weather (issue) + GFS area + GFS full state grid + tokens ne 7.43          73.41          13.50        35.75            -1.06     [-1.63, -0.58]                 -10.46          [-12.82, -3.36]
+                      weather (issue) + GFS area + GFS regional + tokens ne 7.28          74.24          14.94        38.44            -1.20     [-1.87, -0.62]                  -9.63          [-13.27, +1.30]
+              weather (issue) + GFS area + GFS regional + MERRA-2 fields ne 7.26          72.13          15.17        37.37            -1.23     [-1.85, -0.69]                 -11.73         [-12.24, -10.20]
+             weather (issue) + GFS area + GFS regional + GFS full state box 7.38          71.61          14.00        36.90            -1.10     [-1.69, -0.62]                 -12.26         [-12.38, -11.89]
+            weather (issue) + GFS area + GFS regional + GFS full state grid 7.40          67.55          13.20        34.87            -1.08     [-1.68, -0.60]                 -16.32         [-17.82, -11.80]
+ weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne 7.33          73.49          14.46        37.09            -1.15     [-1.75, -0.61]                 -10.38          [-10.72, -9.35]
+weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne 7.37          69.91          13.63        35.32            -1.11     [-1.75, -0.59]                 -13.95          [-16.50, -6.31]
+
+== lmp, test 2024: MAE ($/MWh) overall / cold snaps / heat waves / top 5% price hours; difference vs '+ old weather + GFS' with 95% week-bootstrap interval (negative = better than GFS)
+                                                                feature_set  MAE  MAE_cold_snap  MAE_heat_wave  MAE_top5pct  dMAE_vs_ref_all dMAE_vs_ref_all_ci  dMAE_vs_ref_cold_snap dMAE_vs_ref_cold_snap_ci
+                                                 weather (issue) + GFS area 7.55          19.06          20.53        32.63              NaN                NaN                    NaN                      NaN
+                                  weather (issue) + GFS area + GFS regional 7.46          17.87          21.26        32.67            -0.08     [-0.49, +0.33]                  -1.20           [-7.54, +2.92]
+                                     weather (issue) + GFS area + tokens ne 6.72          14.77          20.17        33.05            -0.83     [-1.23, -0.44]                  -4.29           [-8.93, -1.50]
+                             weather (issue) + GFS area + MERRA-2 fields ne 7.12          16.12          22.57        35.61            -0.43     [-0.80, -0.09]                  -2.94           [-7.29, +1.22]
+                            weather (issue) + GFS area + GFS full state box 7.00          15.28          20.46        31.55            -0.55     [-0.97, -0.14]                  -3.78           [-8.11, -0.77]
+                           weather (issue) + GFS area + GFS full state grid 7.20          18.52          20.73        34.53            -0.35     [-0.76, +0.02]                  -0.55           [-6.90, +5.10]
+                weather (issue) + GFS area + GFS full state box + tokens ne 6.78          15.53          20.75        32.05            -0.76     [-1.16, -0.37]                  -3.53           [-8.45, -0.53]
+               weather (issue) + GFS area + GFS full state grid + tokens ne 6.92          15.52          20.72        32.55            -0.63     [-1.04, -0.25]                  -3.54           [-9.67, +1.17]
+                      weather (issue) + GFS area + GFS regional + tokens ne 6.77          16.21          19.63        31.86            -0.77     [-1.23, -0.35]                  -2.86          [-10.91, +2.29]
+              weather (issue) + GFS area + GFS regional + MERRA-2 fields ne 6.91          15.65          21.15        32.16            -0.63     [-1.05, -0.24]                  -3.42          [-10.32, +1.04]
+             weather (issue) + GFS area + GFS regional + GFS full state box 7.03          15.59          20.29        30.69            -0.52     [-0.91, -0.14]                  -3.48           [-9.86, +0.57]
+            weather (issue) + GFS area + GFS regional + GFS full state grid 7.19          17.28          20.85        31.77            -0.36     [-0.75, +0.00]                  -1.78          [-11.64, +3.72]
+ weather (issue) + GFS area + GFS regional + GFS full state box + tokens ne 6.91          17.71          20.28        31.76            -0.63     [-1.07, -0.19]                  -1.35           [-9.02, +3.81]
+weather (issue) + GFS area + GFS regional + GFS full state grid + tokens ne 6.88          16.62          20.56        31.08            -0.67     [-1.08, -0.25]                  -2.45          [-11.56, +3.19]
+
+Wrote results/regional/price_gfs_full

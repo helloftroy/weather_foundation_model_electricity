@@ -242,6 +242,7 @@ def main() -> None:
                              "training-year times (unlabelled) as usual. Model names get a ' [train recent Nm]' / "
                              "' [train random Nm dK]' tag; untagged = all training months")
     parser.add_argument("--se-draws", type=int, default=5)
+    parser.add_argument("--export-oof", action="store_true", help="With --export-residuals: also the out-of-fold GFS predictions (5 extra fits per model)")
     parser.add_argument("--export-residuals", action="store_true",
                         help="For the spatial readout heads (local/spatial_head.py): fit GFS and GFS + GFS regional, and save "
                              "per test year the hourly rows with their 3-hourly target-time index, the out-of-fold training "
@@ -561,15 +562,20 @@ def main() -> None:
                     model.fit(Pool(X[tr_fit], y_fit[tr_fit]))
                     pred = model.predict(X[te])
                     if args.export_residuals:
-                        oof, mfold = oof_predictions(model, X, tr_fit, y_fit, df, str(args.out_dir / "catboost_info"))
+                        oof, mfold = (oof_predictions(model, X, tr_fit, y_fit, df, str(args.out_dir / "catboost_info")) if args.export_oof
+                                      else (np.full(len(df), np.nan), None))
+                        if not args.export_oof:
+                            lt = df["timestamp_local"]
+                            mfold = pd.Series((lt.dt.year * 12 + lt.dt.month).to_numpy()).rank(method="dense").astype(int).to_numpy() % 5
                         tag = "gfs_regional" if "GFS regional" in combo else "gfs"
                         test_pred = np.full(len(df), np.nan)
                         test_pred[te] = pred
                         np.savez(args.out_dir / f"residuals_{test_year}_{tag}.npz", ti=ti, tr=tr_fit, te=te, y=y_fit,
                                  n=df[f"N_{target}"].to_numpy(), oof=oof, month_fold=mfold, test_pred=test_pred, week=week,
                                  timestamp=df["timestamp"].to_numpy(), targets=targets.values, context_names=np.array(CALENDAR + gas_cols),
-                                 context=X[CALENDAR + gas_cols].to_numpy(float), gfs_area=blocks["GFS area"][np.clip(ti, 0, None)])
-                        print(f"    exported residuals ({tag}): out-of-fold residual MAE {np.nanmean(np.abs(y_fit[tr_fit] - oof[tr_fit])):.2f}", flush=True)
+                                 context=X[CALENDAR + gas_cols].to_numpy(float), gfs_area=blocks["GFS area"][np.clip(ti, 0, None)],
+                                 X=X.to_numpy(float), x_names=np.array(X.columns), local_day=df["timestamp_local"].dt.normalize().to_numpy())
+                        print(f"    exported rows and features ({tag})", flush=True)
                     if args.save_shap and "Prithvi tokens" in combo:
                         sd = args.out_dir / "shap"
                         sd.mkdir(exist_ok=True)
