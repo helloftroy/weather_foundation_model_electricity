@@ -1,0 +1,53 @@
+
+[test 2023, base gfs] train 17214 h (fit 14239, val 2975), test 8706 h; base MAE 8.41; out-of-fold residual sd 21.26
+  context only           params    1441  MAE   8.55  (base 8.41; epochs [11, 11, 11])
+  tokens: 64 shared per-patch components keep 62.5% of the standardised variance (31 s)
+  tokens grid conv       params   81441  MAE   9.02  (base 8.41; epochs [11, 12, 11])
+/Users/hellpark/multimodal_seusmbol/weather_electricity_foundation/local/spatial_head.py:125: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(layer, 2)
+  tokens grid attn       params   24481  MAE   9.33  (base 8.41; epochs [11, 13, 13])
+  tokens pooled conv     params   25121  MAE   8.50  (base 8.41; epochs [11, 11, 11])
+  tokens pooled attn     params   22721  MAE   9.08  (base 8.41; epochs [11, 12, 12])
+  merra: 64 shared per-patch components keep 92.2% of the standardised variance (6 s)
+  merra grid conv        params   81441  MAE   9.38  (base 8.41; epochs [13, 12, 12])
+/Users/hellpark/multimodal_seusmbol/weather_electricity_foundation/local/spatial_head.py:125: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(layer, 2)
+  merra grid attn        params   24481  MAE   8.82  (base 8.41; epochs [11, 11, 11])
+  merra pooled conv      params   25121  MAE   8.76  (base 8.41; epochs [11, 11, 20])
+  merra pooled attn      params   22721  MAE   8.52  (base 8.41; epochs [16, 11, 11])
+
+[test 2024, base gfs] train 25920 h (fit 20784, val 5136), test 8730 h; base MAE 7.60; out-of-fold residual sd 18.79
+  context only           params    1441  MAE   7.84  (base 7.60; epochs [11, 12, 12])
+  tokens: 64 shared per-patch components keep 62.4% of the standardised variance (38 s)
+  tokens grid conv       params   81441  MAE   7.85  (base 7.60; epochs [11, 11, 11])
+/Users/hellpark/multimodal_seusmbol/weather_electricity_foundation/local/spatial_head.py:125: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(layer, 2)
+  tokens grid attn       params   24481  MAE   8.04  (base 7.60; epochs [11, 11, 13])
+  tokens pooled conv     params   25121  MAE   7.85  (base 7.60; epochs [11, 11, 11])
+  tokens pooled attn     params   22721  MAE   7.74  (base 7.60; epochs [11, 11, 16])
+  merra: 64 shared per-patch components keep 92.3% of the standardised variance (6 s)
+  merra grid conv        params   81441  MAE   7.78  (base 7.60; epochs [11, 12, 11])
+/Users/hellpark/multimodal_seusmbol/weather_electricity_foundation/local/spatial_head.py:125: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(layer, 2)
+  merra grid attn        params   24481  MAE   7.75  (base 7.60; epochs [11, 11, 12])
+  merra pooled conv      params   25121  MAE   7.84  (base 7.60; epochs [11, 11, 11])
+  merra pooled attn      params   22721  MAE   7.81  (base 7.60; epochs [11, 11, 11])
+test_year                                              2023                  2024
+model              minus                                                         
+context only       base                +0.14 [-0.13, +0.41]  +0.23 [-0.05, +0.52]
+tokens grid conv   base                +0.61 [-0.02, +1.26]  +0.24 [-0.07, +0.56]
+                   merra grid conv     -0.37 [-0.76, +0.04]  +0.07 [-0.10, +0.22]
+                   tokens pooled conv  +0.51 [-0.02, +1.07]  -0.00 [-0.27, +0.23]
+tokens grid attn   base                +0.92 [+0.13, +1.83]  +0.44 [+0.03, +0.87]
+                   merra grid attn     +0.51 [-0.13, +1.21]  +0.29 [+0.03, +0.59]
+                   tokens pooled attn  +0.25 [-0.01, +0.52]  +0.30 [+0.14, +0.48]
+tokens pooled conv base                +0.10 [-0.17, +0.36]  +0.25 [-0.01, +0.51]
+                   merra pooled conv   -0.26 [-0.59, +0.02]  +0.01 [-0.01, +0.02]
+tokens pooled attn base                +0.68 [+0.00, +1.40]  +0.14 [-0.25, +0.51]
+                   merra pooled attn   +0.57 [+0.14, +1.04]  -0.07 [-0.30, +0.16]
+merra grid conv    base                +0.97 [+0.32, +1.65]  +0.18 [-0.11, +0.45]
+                   merra pooled conv   +0.62 [+0.14, +1.07]  -0.06 [-0.31, +0.15]
+merra grid attn    base                +0.42 [-0.06, +0.89]  +0.15 [-0.16, +0.44]
+                   merra pooled attn   +0.30 [+0.06, +0.56]  -0.06 [-0.22, +0.10]
+merra pooled conv  base                +0.35 [-0.10, +0.88]  +0.24 [-0.01, +0.49]
+merra pooled attn  base                +0.11 [-0.33, +0.53]  +0.21 [-0.07, +0.49]

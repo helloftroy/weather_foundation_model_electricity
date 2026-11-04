@@ -633,17 +633,16 @@ done
 
 ## Price: still to do
 
-- **Spatial readout heads (2026-11-03, code ready, not run).** Equal-capacity
-  test of the representation: tokens, MERRA-2 input fields and (once
-  downloaded) the full GFS state, each on Prithvi's 8 x 7 patch grid, reduced
-  to 64 numbers per patch by one shared PCA basis, then the same conv or
-  attention head (grid vs patch-mean view), trained on out-of-fold residuals
-  of the CatBoost GFS model; a context-only head as control. Needs torch in
-  the .venv (`.venv/bin/pip install torch`). Steps: `local/price_benchmark.py
-  --targets lmp --gas-features henryhub --export-residuals --out-dir
-  results/regional/spatial_head`, then `local/spatial_head.py --residuals-dir
-  results/regional/spatial_head` (add `--reps none tokens merra gfs_full`
-  and `--base gfs_regional` as wanted).
+- **Spatial readout heads: first run failed as a design (2026-11-03).**
+  Residual-correction version (`local/spatial_head.py`, over GFS): every
+  head, including the context-only control (+0.14 / +0.23 $/MWh), made
+  the GFS model worse; early stopping kept epoch ~1 throughout. Same
+  failure as the earlier ridge/MLP residual heads: out-of-fold training
+  residuals (sd 19-21, carrying 2022's gas regime) do not transfer to the
+  test years. Uninformative about tokens vs raw state (MAE 2023 / 2024:
+  base 8.41 / 7.60; tokens grid conv 9.02 / 7.85; MERRA-2 grid conv
+  9.38 / 7.78; log `results/spatial_head_gfs.log`). Next design: stack the
+  head's out-of-fold output into CatBoost instead of adding it.
 - **Full-GFS-state control (2026-11-03, code ready, waiting on the cluster
   download).** Reviewer question: do 50 PCs of the full GFS forecast state
   over New England match the tokens? 150 fields (HGT, TMP, RH, VVEL, U, V,

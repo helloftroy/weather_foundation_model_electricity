@@ -194,7 +194,7 @@ def main():
     rows, contrasts = [], []
     pred_frames = []
     for test_year in args.test_years:
-        z = np.load(args.residuals_dir / f"residuals_{test_year}_{args.base}.npz", allow_pickle=False)
+        z = np.load(args.residuals_dir / f"residuals_{test_year}_{args.base}.npz", allow_pickle=True)  # week is an object (string) array; our own file
         targets = pd.DatetimeIndex(z["targets"])
         ti, tr, te, y, oof, test_pred = z["ti"], z["tr"], z["te"], z["y"], z["oof"], z["test_pred"]
         week, mfold = z["week"], z["month_fold"]
