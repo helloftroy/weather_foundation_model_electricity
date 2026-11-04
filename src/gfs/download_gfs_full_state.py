@@ -22,6 +22,11 @@ Each field is cropped to the Northeast box 38-50 N, 80-62 W (25 x 37 points at 0
                              "ne" (40-48 N, 75-66.25 W, the extent the tokens and MERRA-2 fields are pooled over) and
                              "northeast" (the whole crop)
   gfs_full_{year}_ne_grid.npy  [sample, field, 17, 18] float32, the "ne" box at full resolution (for gridded PCA)
+
+--region texas (the ERCOT replication): crop 25-38 N, 108-92 W (27 x 33 points); the box is "ercot" (26-36.5 N,
+106.5-93.5 W, the extent the ERCOT tokens and input state are pooled over) and the crop mean is "texas". Files are
+gfs_full_texas_{year}_meta.npz (ercot_mean, texas_mean, ercot_lat, ercot_lon) and gfs_full_texas_{year}_ercot_grid.npy
+[sample, field, 22, 27].
 """
 import argparse
 import threading
@@ -47,8 +52,10 @@ SINGLE = (("PRMSL", "mean sea level"), ("PRES", "surface"), ("TMP", "surface"), 
           ("CAPE", "surface"), ("HGT", "tropopause"))
 FIELDS = [(v, f"{lv} mb") for v in LEVEL_VARS for lv in LEVELS if not (v == "VVEL" and lv == 50)] + list(SINGLE)
 NAMES = [f"{v}_{lv.split()[0]}" if lv.endswith(" mb") else f"{v}_{lv.split(' (')[0].replace(' ', '_')}" for v, lv in FIELDS]
-CROP = (38.0, 50.0, -80.0, -62.0)
-NE = (40.0, 48.0, -75.0, -66.25)
+# region -> (file prefix, crop (S, N, W, E), crop name, box, box name)
+REGIONS = {"ne": ("gfs_full", (38.0, 50.0, -80.0, -62.0), "northeast", (40.0, 48.0, -75.0, -66.25), "ne"),
+           "texas": ("gfs_full_texas", (25.0, 38.0, -108.0, -92.0), "texas", (26.0, 36.5, -106.5, -93.5), "ercot")}
+PREFIX, CROP, CROP_NAME, NE, BOX = REGIONS["ne"]
 RUNS, FHOURS = (0, 6, 12, 18), (24, 27)
 
 _local = threading.local()
@@ -118,7 +125,7 @@ def fetch_one(run, fhour, out_dir):
                 groups.append(cur)
                 cur = [k]
         groups.append(cur)
-        arr = np.full((len(FIELDS), 25, 37), np.nan, np.float32)
+        arr = np.full((len(FIELDS), round((CROP[1] - CROP[0]) / 0.5) + 1, round((CROP[3] - CROP[2]) / 0.5) + 1), np.nan, np.float32)
         for g in groups:
             start, end = rg[g[0]][0], rg[g[-1]][1]
             blob = http(url, (start, end))
@@ -155,7 +162,7 @@ def combine(parts, year, out_dir):
     lon = np.arange(CROP[2], CROP[3] + 0.01, 0.5)
     rn = (lat >= NE[0]) & (lat <= NE[1])
     cn = (lon >= NE[2]) & (lon <= NE[3])
-    grid = np.lib.format.open_memmap(out_dir / f"gfs_full_{year}_ne_grid.npy", mode="w+", dtype=np.float32,
+    grid = np.lib.format.open_memmap(out_dir / f"{PREFIX}_{year}_{BOX}_grid.npy", mode="w+", dtype=np.float32,
                                      shape=(len(files), len(FIELDS), int(rn.sum()), int(cn.sum())))
     ne_mean = np.empty((len(files), len(FIELDS)), np.float32)
     nea_mean = np.empty_like(ne_mean)
@@ -165,9 +172,9 @@ def combine(parts, year, out_dir):
         ne_mean[i] = grid[i].mean(axis=(1, 2))
         nea_mean[i] = a.mean(axis=(1, 2))
     grid.flush()
-    np.savez(out_dir / f"gfs_full_{year}_meta.npz", run_time=run.values, lead_hours=lead, valid_time=valid.values,
-             names=np.array(NAMES), ne_mean=ne_mean, northeast_mean=nea_mean, ne_lat=lat[rn], ne_lon=lon[cn])
-    print(f"Wrote gfs_full_{year}_meta.npz and _ne_grid.npy: {len(files)} forecasts x {len(FIELDS)} fields, "
+    np.savez(out_dir / f"{PREFIX}_{year}_meta.npz", run_time=run.values, lead_hours=lead, valid_time=valid.values,
+             names=np.array(NAMES), **{f"{BOX}_mean": ne_mean, f"{CROP_NAME}_mean": nea_mean, f"{BOX}_lat": lat[rn], f"{BOX}_lon": lon[cn]})
+    print(f"Wrote {PREFIX}_{year}_meta.npz and _{BOX}_grid.npy: {len(files)} forecasts x {len(FIELDS)} fields, "
           f"NaN in {np.isnan(ne_mean).any(axis=1).sum()} samples", flush=True)
 
 
@@ -176,9 +183,12 @@ def main():
     p.add_argument("--year", type=int, required=True)
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--workers", type=int, default=16)
+    p.add_argument("--region", choices=list(REGIONS), default="ne")
     args = p.parse_args()
+    global PREFIX, CROP, CROP_NAME, NE, BOX
+    PREFIX, CROP, CROP_NAME, NE, BOX = REGIONS[args.region]
     runs = [r for r in pd.date_range(f"{args.year - 1}-12-30", f"{args.year}-12-31 18:00", freq="6h") if r.hour in RUNS]
-    parts = args.out_dir / f"gfs_full_{args.year}_parts"
+    parts = args.out_dir / f"{PREFIX}_{args.year}_parts"
     parts.mkdir(parents=True, exist_ok=True)
     jobs = [(r, f) for r in runs for f in FHOURS]
     print(f"{len(jobs)} forecast files x {len(FIELDS)} fields, {args.workers} at a time", flush=True)

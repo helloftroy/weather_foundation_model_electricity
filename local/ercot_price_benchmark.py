@@ -17,6 +17,9 @@ Features (as for ISO-NE):
   Prithvi tokens     final encoder layer pooled over the whole ERCOT footprint, 50 PCs fitted on training times
   tokens hub area    the same pooled over the hub's own area (variant)
   input state        Prithvi's 160 input channels pooled over ERCOT, 50 PCs (the input-state control)
+  GFS full state     (--gfs-full) the full GFS 24/27 h forecast state for the target hour (150 fields, all levels),
+                     averaged over the ERCOT box, 50 PCs fitted on training times; "GFS full grid" is the gridded PCA-50
+                     of the same box, one basis per fold (src/gfs/gfs_full_state_pca.py --region texas)
 
 Inputs: data/compact/ercot_dam_spp_YEAR.parquet (src/ercot/download_ercot_dam_prices.py), data/gfs/gfs_texas_YEAR.nc
 (06_download_gfs.sbatch with the Texas box), data/prithvi_tokens_tx_YEAR_lead24.json + *_pooled_{tokens,inputs,recon}.npy
@@ -91,7 +94,11 @@ def main() -> None:
     parser.add_argument("--main-only", action="store_true",
                         help="Only the main feature sets: base, + weather, + GFS, + tokens, + GFS + tokens, + GFS + input "
                              "state, + GFS + input state + tokens")
+    parser.add_argument("--gfs-full", type=Path, default=None,
+                        help="Full-GFS-state control: gfs_full_state_texas_features.npz. Runs only GFS, + tokens, + input "
+                             "state, + GFS full state (box / grid) and each GFS state + tokens")
     args = parser.parse_args()
+    gfull = np.load(args.gfs_full) if args.gfs_full else None
     args.out_dir.mkdir(parents=True, exist_ok=True)
     c = args.data_dir / "compact"
 
@@ -126,6 +133,17 @@ def main() -> None:
         sfc = [ch.index(v) for v in SFC]
         yb = {"Prithvi tokens (raw)": at(tok[:, ext.index("ercot")], pos_issue),
               "input state (raw)": at(inp[:, ext.index("ercot")], pos_issue)}
+        if gfull is not None:   # the 24 h forecast valid at each target, else the 27 h one (as for GFS area)
+            vt, gl = pd.DatetimeIndex(gfull["valid_time"]), gfull["lead_hours"]
+            gpick = np.full(len(t), -1)
+            for want in (27, 24):
+                ix = pd.Series(np.where(gl == want)[0], index=vt[gl == want])
+                gp = ix[~ix.index.duplicated()].reindex(t).to_numpy()
+                gpick[~np.isnan(gp)] = gp[~np.isnan(gp)].astype(int)
+            take = lambda a: np.where((gpick >= 0)[:, None], a[np.clip(gpick, 0, None)], np.nan).astype(np.float32)  # noqa: E731
+            yb["GFS full state (raw)"] = take(gfull["ercot_mean"])
+            for ty in args.test_years:
+                yb[f"GFS full grid@{ty}"] = take(gfull[f"grid_pc_{ty}"])
         for hub in args.hubs:
             e = ext.index(HUB_AREA[hub])
             box = meta["pooled"]["extents"][HUB_AREA[hub]]
@@ -163,6 +181,9 @@ def main() -> None:
         combos = [[], [wi], [wi, G], [wi, T], [wi, G, T], [wi, G, IS], [wi, G, IS, T]]
     if args.gfs_only:
         combos = [[wi, G], [wi, G, T]]
+    F, Fg = "GFS full state", "GFS full grid"
+    if args.gfs_full:
+        combos = [[wi, G], [wi, G, T], [wi, G, IS], [wi, G, F], [wi, G, Fg], [wi, G, F, T], [wi, G, Fg, T]]
     cap_of = lambda local_times: np.where(pd.DatetimeIndex(local_times) < pd.Timestamp("2022-01-01"), 9000.0, 5000.0)  # noqa: E731
     df["ercot_offer_cap"] = cap_of(df["timestamp_local"])
     extra_cols = ["ercot_offer_cap"] if args.offer_cap == "feature" else []
@@ -190,7 +211,10 @@ def main() -> None:
             te = ok & (year == test_year)
             train_times = np.zeros(len(targets), bool)
             train_times[np.unique(ti[tr])] = True
-            fb = {k: v for k, v in hb.items() if not k.endswith(" (raw)")}
+            fb = {k: v for k, v in hb.items() if not k.endswith(" (raw)") and "@" not in k}
+            if gfull is not None:
+                fb[F] = pca(hb["GFS full state (raw)"], train_times, 50)[0]
+                fb[Fg] = hb[f"GFS full grid@{test_year}"]
             fb[T] = pca(hb["Prithvi tokens (raw)"], train_times, 50)[0]
             fb[TA] = pca(hb["tokens hub area (raw)"], train_times, 50)[0]
             fb[IS] = pca(hb["input state (raw)"], train_times, 50)[0]

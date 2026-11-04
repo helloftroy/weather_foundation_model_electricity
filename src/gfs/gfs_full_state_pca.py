@@ -10,6 +10,9 @@ Output (small, to copy to the local data/gfs/): gfs_full_state_features.npz with
 names, ne_mean and northeast_mean (box means [sample, 150]), grid_pc_2023 / grid_pc_2024 [sample, 50] and the variance
 fraction each keeps. Also gfs_full_state_patch_grid.npy [sample, 150, 8, 7]: the fields averaged over Prithvi's 8 x 7
 token patches (1 deg lat x 1.25 deg lon from 40 N, 75 W), same sample order, for the spatial readout heads.
+
+--region texas: reads gfs_full_texas_{year}_meta.npz / _ercot_grid.npy (150 x 22 x 27 over the ERCOT box) and writes
+gfs_full_state_texas_features.npz with ercot_mean and texas_mean in place of ne_mean / northeast_mean (no patch grid).
 """
 import argparse
 from pathlib import Path
@@ -23,15 +26,18 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dir", type=Path, required=True)
     p.add_argument("--k", type=int, default=50)
+    p.add_argument("--region", choices=["ne", "texas"], default="ne")
     args = p.parse_args()
-    metas = [np.load(args.dir / f"gfs_full_{y}_meta.npz") for y in YEARS]
-    grids = [np.load(args.dir / f"gfs_full_{y}_ne_grid.npy", mmap_mode="r") for y in YEARS]
+    prefix, box, crop, out_name = (("gfs_full", "ne", "northeast", "gfs_full_state_features.npz") if args.region == "ne" else
+                                   ("gfs_full_texas", "ercot", "texas", "gfs_full_state_texas_features.npz"))
+    metas = [np.load(args.dir / f"{prefix}_{y}_meta.npz") for y in YEARS]
+    grids = [np.load(args.dir / f"{prefix}_{y}_{box}_grid.npy", mmap_mode="r") for y in YEARS]
     yr = np.concatenate([np.full(len(m["lead_hours"]), y) for m, y in zip(metas, YEARS)])
-    good = np.concatenate([~np.isnan(m["ne_mean"]).any(axis=1) for m in metas])
+    good = np.concatenate([~np.isnan(m[f"{box}_mean"]).any(axis=1) for m in metas])
     n_f = grids[0].shape[1]
     X = np.concatenate([np.asarray(g, np.float32).reshape(len(g), -1) for g in grids])   # [sample, field * points]
     field = np.repeat(np.arange(n_f), X.shape[1] // n_f)
-    out = {k: np.concatenate([m[k] for m in metas]) for k in ("run_time", "lead_hours", "valid_time", "ne_mean", "northeast_mean")}
+    out = {k: np.concatenate([m[k] for m in metas]) for k in ("run_time", "lead_hours", "valid_time", f"{box}_mean", f"{crop}_mean")}
     out["names"] = metas[0]["names"]
     for test in (2023, 2024):
         tr = good & (yr < test)
@@ -50,6 +56,10 @@ def main():
         out[f"grid_pc_{test}"] = scores
         out[f"grid_frac_{test}"] = np.float32(w[:args.k].sum() / w.sum())
         print(f"test {test}: basis from {tr.sum()} training forecasts; {args.k} PCs keep {w[:args.k].sum() / w.sum():.1%}", flush=True)
+    if args.region == "texas":
+        np.savez(args.dir / out_name, **out)
+        print(f"Wrote {args.dir / out_name}: {len(X)} forecasts, {good.sum()} complete", flush=True)
+        return
     lat, lon = metas[0]["ne_lat"], metas[0]["ne_lon"]
     bi = np.clip(np.floor(lat - 40.0).astype(int), 0, 7)
     bj = np.clip(np.floor((lon + 75.0) / 1.25).astype(int), 0, 6)

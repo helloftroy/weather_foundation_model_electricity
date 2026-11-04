@@ -15,6 +15,7 @@ export PYTHONUNBUFFERED=1
 # One year per job: sbatch --account=... --export=ALL,YEAR=2023 cluster/sbatch/service/09_download_gfs_full_state.sbatch
 # Output in data/gfs_full/: gfs_full_YEAR_meta.npz, gfs_full_YEAR_ne_grid.npy (~1.8 GB), parts/ (~1.6 GB, deletable after).
 YEAR="${YEAR:?Set YEAR}"
+REGION="${REGION:-ne}"   # ne or texas (ERCOT replication: gfs_full_texas_YEAR_*)
 WORKERS="${WORKERS:-16}"
 echo "Year: ${YEAR}  started: $(date)  host: $(hostname)"
 
@@ -29,5 +30,5 @@ conda activate "$(cat "${SCRATCH_ROOT}/prithvi_env_path.txt")"
 python -c "import eccodes, requests" 2>/dev/null || pip install --quiet eccodes eccodeslib requests
 
 cd "${REPO_ROOT}/src/gfs"
-python download_gfs_full_state.py --year "${YEAR}" --out-dir "${SCRATCH_ROOT}/data/gfs_full" --workers "${WORKERS}"
+python download_gfs_full_state.py --year "${YEAR}" --out-dir "${SCRATCH_ROOT}/data/gfs_full" --workers "${WORKERS}" --region "${REGION}"
 echo "Job finished: $(date)"
