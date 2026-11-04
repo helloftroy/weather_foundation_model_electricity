@@ -12,7 +12,8 @@ fraction each keeps. Also gfs_full_state_patch_grid.npy [sample, 150, 8, 7]: the
 token patches (1 deg lat x 1.25 deg lon from 40 N, 75 W), same sample order, for the spatial readout heads.
 
 --region texas: reads gfs_full_texas_{year}_meta.npz / _ercot_grid.npy (150 x 22 x 27 over the ERCOT box) and writes
-gfs_full_state_texas_features.npz with ercot_mean and texas_mean in place of ne_mean / northeast_mean (no patch grid).
+gfs_full_state_texas_features.npz with ercot_mean and texas_mean in place of ne_mean / northeast_mean, plus wind_mean
+(30-36.5 N, 104-98 W) and solar_mean (29-34 N, 106.5-99 W) for the renewables test (no patch grid).
 """
 import argparse
 from pathlib import Path
@@ -57,6 +58,11 @@ def main():
         out[f"grid_frac_{test}"] = np.float32(w[:args.k].sum() / w.sum())
         print(f"test {test}: basis from {tr.sum()} training forecasts; {args.k} PCs keep {w[:args.k].sum() / w.sum():.1%}", flush=True)
     if args.region == "texas":
+        # box means over the wind area (West + Panhandle) and the solar area (West + Far West), for the renewables test
+        lat, lon = metas[0]["ercot_lat"], metas[0]["ercot_lon"]
+        for name, (s_, n_, w_, e_) in {"wind": (30.0, 36.5, -104.0, -98.0), "solar": (29.0, 34.0, -106.5, -99.0)}.items():
+            r, c = (lat >= s_) & (lat <= n_), (lon >= w_) & (lon <= e_)
+            out[f"{name}_mean"] = np.concatenate([np.asarray(g[:, :, r][:, :, :, c], np.float32).mean(axis=(2, 3)) for g in grids])
         np.savez(args.dir / out_name, **out)
         print(f"Wrote {args.dir / out_name}: {len(X)} forecasts, {good.sum()} complete", flush=True)
         return
