@@ -1,9 +1,10 @@
 """Figure 3 (price), ISO-NE and ERCOT. A, ISO-NE: GFS vs GFS + Prithvi tokens pooled over New England / the
-Northeast / the wide box; B, ISO-NE: GFS + regional weather, + tokens, + Prithvi's full input state, + both
+Northeast / the wide box; B, ISO-NE: GFS + regional weather, + tokens, + Prithvi's MERRA-2 input state, + the full GFS
+forecast state (150 fields, box mean, PCA-50), + GFS state + tokens
 (out-of-sample R² of the hourly day-ahead hub LMP, 2023 and 2024 as two lines). C, ERCOT: % reduction in MAE from
 adding Prithvi tokens to GFS at each hub (Uri fortnight dropped from training), 95% week-block bootstrap. D, both
 markets on the same relative scale: ISO-NE hub and the ERCOT hub average. Relative (%) changes are used across
-markets because their price levels differ. Reads results/regional/price_pooled_extents/ and results/ercot/without_uri/;
+markets because their price levels differ. Reads results/regional/price_pooled_extents/ (A, D), results/regional/price_gfs_full/ (B) and results/ercot/without_uri/;
 writes results/figures/fig3_price.{png,pdf}, fig3_price_table.csv (A, B) and fig3_price_markets_table.csv (C, D).
 Bare panels; caption text lives in the reply / PROJECT_RESULTS.md."""
 import sys
@@ -24,17 +25,28 @@ G, R = "GFS area", "GFS area + GFS regional"
 PANELS = {
     "A": [("GFS", G), ("+ tokens\nNew England", G + " + tokens ne"), ("+ tokens\nNortheast", G + " + tokens northeast"),
           ("+ tokens\nwide box", G + " + tokens wide")],
-    "B": [("GFS +\nregional", R), ("+ tokens", R + " + tokens ne"), ("+ full\natmospheric\nstate", R + " + MERRA-2 fields ne"),
-          ("+ state\n+ tokens", R + " + MERRA-2 fields ne + tokens ne")],
+    "B": [("GFS +\nregional", R), ("+ tokens", R + " + tokens ne"), ("+ MERRA-2\nstate\n(issue time)", R + " + MERRA-2 fields ne"),
+          ("+ full GFS\nforecast\nstate", R + " + GFS full state box"), ("+ GFS state\n+ tokens", R + " + GFS full state box + tokens ne")],
 }
+# B comes from the full-GFS-state run (results/regional/price_gfs_full; 12 fewer usable hours, where 0.5 deg GFS files
+# are missing), so every column of B is compared on the same hours.
+SOURCE = {"A": "results/regional/price_pooled_extents", "B": "results/regional/price_gfs_full"}
 Y23, Y24 = "#1f4e9c", "#d9822b"
 
-p = pd.read_parquet(root / "results/regional/price_pooled_extents/price_predictions.parquet")
-p["fs"] = p["feature_set"].str.replace(PRE, "", regex=False)
-p["ae"] = (p["pred"] - p["actual"]).abs()
+
+
+def load(d):
+    q = pd.read_parquet(root / d / "price_predictions.parquet")
+    q["fs"] = q["feature_set"].str.replace(PRE, "", regex=False)
+    q["ae"] = (q["pred"] - q["actual"]).abs()
+    return q
+
+
+src = {k: load(d) for k, d in SOURCE.items()}
+p = src["A"]
 rows = []
 for panel, models in PANELS.items():
-    for y, g in p.groupby("test_year"):
+    for y, g in src[panel].groupby("test_year"):
         w = g.pivot_table(index="row", columns="fs", values="ae")
         week = g.drop_duplicates("row").set_index("row")["week"].reindex(w.index).to_numpy()
         ref = models[0][1]
@@ -50,7 +62,7 @@ t = pd.DataFrame(rows)
 METRIC = sys.argv[1] if len(sys.argv) > 1 else "R2"  # "R2" (fig3_price) or "MAE" (fig3_price_mae)
 fig = plt.figure(figsize=(7.2, 6.4))
 outer = fig.add_gridspec(2, 1, height_ratios=[1, 1.05], hspace=0.42)
-top = outer[0].subgridspec(1, 2, wspace=0.12)
+top = outer[0].subgridspec(1, 2, wspace=0.12, width_ratios=[4, 5])
 bottom = outer[1].subgridspec(1, 2, width_ratios=[1.45, 1], wspace=0.55)
 axes = [fig.add_subplot(top[0])]
 axes.append(fig.add_subplot(top[1], sharey=axes[0]))
