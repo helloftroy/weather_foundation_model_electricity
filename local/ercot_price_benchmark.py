@@ -94,6 +94,7 @@ def main() -> None:
     parser.add_argument("--main-only", action="store_true",
                         help="Only the main feature sets: base, + weather, + GFS, + tokens, + GFS + tokens, + GFS + input "
                              "state, + GFS + input state + tokens")
+    parser.add_argument("--threads", type=int, default=-1, help="CatBoost threads (-1: all cores)")
     parser.add_argument("--gfs-full", type=Path, default=None,
                         help="Full-GFS-state control: gfs_full_state_texas_features.npz. Runs only GFS, + tokens, + input "
                              "state, + GFS full state (box / grid) and each GFS state + tokens")
@@ -228,7 +229,7 @@ def main() -> None:
                     cols = [f"{b}_{n}" for n in (NAMES if w == len(NAMES) else range(w))]
                     X = pd.concat([X, pd.DataFrame(fb[b][np.clip(ti, 0, None)], columns=cols, index=df.index)], axis=1)
                 model = CatBoostRegressor(iterations=args.iterations, learning_rate=0.05, depth=6, random_seed=7, verbose=False,
-                                          loss_function=args.loss, thread_count=-1, train_dir=str(args.out_dir / "catboost_info"))
+                                          loss_function=args.loss, thread_count=args.threads, train_dir=str(args.out_dir / "catboost_info"))
                 model.fit(Pool(X[tr], y_fit[tr]))
                 pred = model.predict(X[te]) * scale[te]
                 err = pred - y_all[te]
